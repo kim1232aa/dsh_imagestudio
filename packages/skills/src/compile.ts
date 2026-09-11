@@ -56,9 +56,19 @@ export function selectMode(preset: SkillPreset, brief: string, opts: CompileOpti
   return first
 }
 
+
+function detectBriefVeto(preset: SkillPreset, brief: string): string | undefined {
+  const exact = (preset.scoring.vetoes ?? []).find((v) => brief.includes(v))
+  if (exact) return exact
+  if (/游戏CG应拒|游戏宣传图|游戏\s*CG|明显\s*CG/i.test(brief)) return '明显 CG / 游戏宣传图'
+  if (/过度油腻|AI\s*光效/i.test(brief)) return '过度油腻 AI 光效'
+  if (/电视剧式/.test(brief)) return '普通电视剧式内容'
+  if (/复刻参考图/.test(brief)) return '直接复刻参考图'
+  return undefined
+}
+
 export function compilePlan(skill: LoadedSkill, brief: string, opts: CompileOptions = {}): CreativePlan {
-  const vetoFromBrief = (skill.preset.scoring.vetoes ?? []).find((v) => brief.includes(v))
-    ?? (/游戏宣传图|过度油腻 AI|电视剧式|复刻参考图/.test(brief) ? '明显 CG / 游戏宣传图' : undefined)
+  const vetoFromBrief = detectBriefVeto(skill.preset, brief)
   if (vetoFromBrief && !opts.forceVeto) opts = { ...opts, forceVeto: vetoFromBrief }
   const maxRewrites = opts.maxRewrites ?? 2
   let attempt = 0

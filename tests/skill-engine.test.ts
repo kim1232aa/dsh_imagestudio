@@ -187,6 +187,14 @@ describe('AC-SK skill engine', () => {
     assert.ok(plan.selfCheck.veto)
   })
 
+  it('chip label 游戏CG应拒 also vetoes', async () => {
+    const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
+    const plan = compilePlan(skills[0], '游戏CG应拒')
+    assert.equal(plan.selfCheck.passed, false)
+    assert.equal(plan.selfCheck.score, 0)
+    assert.ok((plan.selfCheck.veto || '').includes('CG') || plan.selfCheck.failures.some((f) => f.startsWith('veto:')))
+  })
+
   it('brief that asks for 游戏宣传图 fails before generate', async () => {
     const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
     const plan = compilePlan(skills[0], '做成游戏宣传图，要过度油腻 AI 光效。')
