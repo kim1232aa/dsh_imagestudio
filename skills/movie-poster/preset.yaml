@@ -1,6 +1,6 @@
 id: movie-poster
-version: 0.1.0
-title: Fantasy movie poster
+version: 0.9.0
+title: Movie poster (superseded)
 source: SKILL.md
 supersededBy: cinema-dna-21x9x3
 
@@ -9,22 +9,32 @@ modes:
     trigger: explicit
     shots: 1
     aspectRatio: '3:4'
-    mustContainInPrompt: ['3:4 vertical poster composition']
+    mustContainInPrompt:
+      - 3:4 vertical poster composition
+    textStrategy: two-stage
 
 constraints:
   referenceImages:
     usage: analysis-only
-  negativePatch: no game key art, no streaming thumbnail, no cheap short-drama cover
-  bannedPromptTerms: [cinematic, masterpiece, epic]
+    maxDimensions: 1
+  negativePatch: >
+    no CGI concept art, no game key art, no glossy AI rendering
+  bannedPromptTerms: [cinematic, beautiful, masterpiece, epic]
+  perShotLimits:
+    sceneFacts: [2, 3]
+    primaryAction: 1
+    lightSources: 1
+    compositionMechanisms: 1
 
 planFields:
-  - 片名钩子
-  - 主视觉中心
-  - 文字层级
+  - 不可解决的状态
+  - 色彩命题
+  - 成像基底
 
 scoring:
   threshold: 82
   rubric:
-    - { item: 片名来自冲突, max: 40 }
-    - { item: 单一主视觉, max: 40 }
-    - { item: 可扩展比例, max: 20 }
+    - { item: 海报构图与片名策略, max: 50 }
+    - { item: 真人实景, max: 50 }
+  vetoes:
+    - 明显 CG / 游戏宣传图

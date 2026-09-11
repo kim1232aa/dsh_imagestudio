@@ -1,17 +1,30 @@
-export * from './types.ts'
+export type * from './types.ts'
 export * from './events.ts'
 export * from './registry.ts'
-export * from './config.ts'
+export {
+  defaultConfig,
+  assertProviderConfig,
+  redactSecrets,
+  describeRedacted,
+} from './config.ts'
+export type { ProviderConfig, StudioConfig } from './config.ts'
 export * from './errors.ts'
 export * from './pipeline.ts'
 
+import type { Context } from '@deepseek-ai/cordis'
 import { ImageGenRegistry } from './registry.ts'
+import { applyBuiltinRequestHooks } from './pipeline.ts'
+import type { ImageRequest } from './types.ts'
 
 export const name = 'image-core'
 export const inject: string[] = []
 
-export function apply(ctx: { imagegen?: ImageGenRegistry; [k: string]: unknown }): void {
-  ctx.imagegen = new ImageGenRegistry()
+export function apply(ctx: Context): void {
+  ctx.provide('imagegen', new ImageGenRegistry())
+  ctx.on('image/before-request', async (req: ImageRequest, next: () => Promise<ImageRequest>) => {
+    applyBuiltinRequestHooks(req)
+    return next()
+  })
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -25,5 +38,15 @@ declare module '@deepseek-ai/cordis' {
   }
   interface Context {
     imagegen: import('./registry.ts').ImageGenRegistry
+    imageSkills: import('./skills-iface.ts').ImageSkillsService & {
+      plans: Map<string, import('./types.ts').CreativePlan>
+    }
+    imageAssets: import('../../assets/src/store.ts').AssetStore
+    imageCompose: {
+      triptych: typeof import('../../compose/src/triptych.ts').composeTriptych
+      overlayTitle: typeof import('../../compose/src/triptych.ts').overlayTitle
+      readEmbeddedTitle: typeof import('../../compose/src/triptych.ts').readEmbeddedTitle
+    }
+    tools: { register(def: unknown): () => void }
   }
 }

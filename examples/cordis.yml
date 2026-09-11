@@ -1,15 +1,34 @@
 # Minimal composition for a local dsh profile.
-# Requires: imagegen (core + one provider). tools plugin stays PENDING without them.
+# Requires: tools, imagegen (core + one provider), llm (skills), jobs (assets).
+# packages/host bootStudio() uses the same order with MiniTools + stubs.
 
 - insert:
     - id: image-core
-      name: '@dsh-imagestudio/dsh-image-core'
+      name: './packages/core/src/index.ts'
+
+    - id: image-compose
+      name: './packages/compose/src/index.ts'
+
+    - id: image-guard
+      name: './packages/guard/src/index.ts'
+
+    - id: image-assets
+      name: './packages/assets/src/index.ts'
+      config:
+        workspaceRoot: !!js process.cwd()
+        keepLastTasks: 50
+
+    - id: image-skills
+      name: './packages/skills/src/index.ts'
+      config:
+        dir: !!js process.env.DSH_SKILLS_DIR ?? './skills'
+        enabled: [cinema-dna-21x9x3, life-force-portrait]
 
     - id: image-provider-mock
-      name: '@dsh-imagestudio/dsh-image-provider-mock'
+      name: './packages/provider-mock/src/index.ts'
 
     - id: image-provider-openai
-      name: '@dsh-imagestudio/dsh-image-provider-openai'
+      name: './packages/provider-openai/src/index.ts'
       disabled: true
       config:
         providers:
@@ -19,13 +38,7 @@
             baseUrl: !!js process.env.IMG_BASE_URL ?? 'https://api.openai.com/v1'
             apiKeyEnv: IMAGE_STUDIO_KEY
 
-    - id: image-skills
-      name: '@dsh-imagestudio/dsh-image-skills'
-      config:
-        dir: !!js process.env.DSH_SKILLS_DIR ?? './skills'
-        enabled: [cinema-dna-21x9x3, life-force-portrait]
-
     - id: image-tools
-      name: '@dsh-imagestudio/dsh-image-tools'
+      name: './packages/tools/src/index.ts'
       config:
         limits: { concurrency: 3, perTaskTimeoutMs: 180000, maxImagesPerCall: 4 }

@@ -134,7 +134,3 @@ export interface ImageProvider {
 }
 
 export type GuardVerdict = { blocked: true; reason: string }
-
-export interface ToolArgsError extends Error {
-  code: 'INVALID_ARGS' | 'TIMEOUT' | 'CANCELLED' | 'PROVIDER' | 'PATH'
-}

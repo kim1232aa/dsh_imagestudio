@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, basename } from 'node:path'
+import { join } from 'node:path'
 import { parseYaml } from './yaml.ts'
 import { validatePreset, type SkillPreset } from './schema.ts'
+import { BUNDLED_YAML } from './bundled.ts'
 
 export interface LoadedSkill {
   dirName: string
@@ -30,6 +31,9 @@ export async function loadSkills(root: string, enabled?: string[]): Promise<Load
       errors.push(`${name}: ${(err as Error).message}`)
     }
   }
+  if (!loaded.length) {
+    return loadBundled(enabled)
+  }
   if (errors.length) {
     const err = new Error(`Some skills failed to load:\n- ${errors.join('\n- ')}`)
     ;(err as Error & { partial: LoadedSkill[] }).partial = loaded
@@ -40,17 +44,18 @@ export async function loadSkills(root: string, enabled?: string[]): Promise<Load
   return loaded
 }
 
-function detectConflicts(skills: LoadedSkill[]): void {
-  const claims = new Map<string, string[]>()
-  for (const s of skills) {
-    if (s.preset.supersededBy) continue
-    for (const mode of Object.keys(s.preset.modes)) {
-      const key = `${mode}`
-      const list = claims.get(key) ?? []
-      list.push(s.preset.id)
-      claims.set(key, list)
-    }
+export function loadBundled(enabled?: string[]): LoadedSkill[] {
+  const loaded: LoadedSkill[] = []
+  for (const [id, yamlText] of Object.entries(BUNDLED_YAML)) {
+    if (enabled && !enabled.includes(id)) continue
+    const preset = validatePreset(parseYaml(yamlText), id)
+    loaded.push({ dirName: id, dir: `:bundled/${id}`, preset, skillMarkdown: '' })
   }
+  detectConflicts(loaded)
+  return loaded
+}
+
+function detectConflicts(skills: LoadedSkill[]): void {
   const poster = skills.filter(
     (s) => s.preset.modes.poster && !s.preset.supersededBy && s.preset.id !== 'cinema-dna-21x9x3',
   )

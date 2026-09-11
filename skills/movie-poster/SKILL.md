@@ -1,6 +1,3 @@
----
-name: movie-poster
-description: 电影海报接口预留。与 cinema-dna 的 poster 模式通过 supersededBy 避免双报适用。
----
+# Movie poster
 
-上游：https://github.com/dacnay816y62-hub/fantasy-movie-poster-skill
+Superseded by `cinema-dna-21x9x3` poster mode (`supersededBy`). Kept as a strategy pack for title-card phrasing.

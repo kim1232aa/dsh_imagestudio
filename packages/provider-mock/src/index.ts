@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto'
+import type { Context } from '@deepseek-ai/cordis'
 import type { ImageProvider, ImageRequest, ImageResult, ProviderInfo } from '../../core/src/types.ts'
 import { createSolid, encodePng } from '../../compose/src/png.ts'
+import { createFilmStill } from './film.ts'
 
 export interface MockProviderOptions {
   id?: string
   model?: string
   latencyMs?: number
+  film?: boolean
 }
 
 export class MockImageProvider implements ImageProvider {
@@ -16,11 +19,13 @@ export class MockImageProvider implements ImageProvider {
   maxConcurrent = 0
   lastRequest: ImageRequest | undefined
   private readonly latencyMs: number
+  private readonly film: boolean
 
   constructor(opts: MockProviderOptions = {}) {
     this.id = opts.id ?? 'mock'
     this.model = opts.model ?? 'mock-fixture'
     this.latencyMs = opts.latencyMs ?? 0
+    this.film = opts.film ?? true
   }
 
   info(): ProviderInfo {
@@ -38,8 +43,9 @@ export class MockImageProvider implements ImageProvider {
       const { width, height } = pixelsFor(req.aspectRatio)
       const images = []
       for (let i = 0; i < req.n; i++) {
-        const color = hashColor(req.prompt + ':' + i)
-        const png = encodePng(createSolid(width, height, color))
+        const png = this.film
+          ? createFilmStill(width, height, req.prompt + ':' + i)
+          : encodePng(createSolid(width, height, hashColor(req.prompt + ':' + i)))
         images.push({
           path: `memory://${this.id}/${hash(req.prompt)}-${i}.png`,
           width,
@@ -99,3 +105,8 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export const name = 'image-provider-mock'
 export const inject = ['imagegen']
+
+export function apply(ctx: Context): void {
+  const impl = new MockImageProvider()
+  ctx.effect(() => ctx.imagegen.register(impl.id, impl), 'image-provider-mock')
+}

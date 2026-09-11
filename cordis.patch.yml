@@ -1,7 +1,9 @@
+# Official bundle layer. Activated by `dsh plugin add file:<this-repo>`
+# because package.json declares dsh.bundle.patch.
+#
+# One row is enough: index.ts apply() mounts the design-doc packages as
+# child fibers. Requires the host profile to already provide `tools`
+# (and `llm` / `jobs` for skills + assets). The shipped web profile does.
 - insert:
-    - id: image-core
-      name: '@dsh-imagestudio/dsh-image-core'
-    - id: image-provider-mock
-      name: '@dsh-imagestudio/dsh-image-provider-mock'
-    - id: image-tools
-      name: '@dsh-imagestudio/dsh-image-tools'
+    - id: image-studio
+      name: dsh-imagestudio

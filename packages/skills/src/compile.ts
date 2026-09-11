@@ -44,7 +44,7 @@ export function selectMode(preset: SkillPreset, brief: string, opts: CompileOpti
   const explicitPoster =
     opts.wantPoster === true ||
     opts.mode === 'poster' ||
-    /\b(海报|封面|片名|视觉体系|poster|title card)\b/i.test(brief)
+    /(海报|封面|片名|视觉体系|poster|title[\s-]?card)/i.test(brief)
   if (explicitPoster && preset.modes.poster) return ['poster', preset.modes.poster]
   if (opts.mode && preset.modes[opts.mode]) return [opts.mode, preset.modes[opts.mode]]
   if (preset.modes.triptych) return ['triptych', preset.modes.triptych]
