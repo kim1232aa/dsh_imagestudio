@@ -4,7 +4,7 @@
 
   function findNewSessionButton() {
     const nodes = [...document.querySelectorAll("button, a, [role='button']")];
-    return nodes.find((b) => /新会话|New session|New Session/i.test((b.textContent || "").replace(/\s+/g, "")));
+    return nodes.find((b) => /新会话|New\s*Session/i.test((b.textContent || "").replace(/\s+/g, " ").trim()));
   }
 
   function ensureButton() {
@@ -61,4 +61,5 @@
   obs.observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
   else ensureButton();
+  setInterval(ensureButton, 1500);
 })();
