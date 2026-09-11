@@ -1,0 +1,54 @@
+id: life-force-portrait
+version: 1.0.0
+title: Fantasy life-force portrait
+source: SKILL.md
+
+modes:
+  mode-a:
+    shots: 1
+    aspectRatio: '3:4'
+    refUsage: image-to-image
+  mode-b:
+    shots: 1
+    aspectRatio: '3:4'
+    refUsage: analysis-only
+
+constraints:
+  referenceImages:
+    usage: analysis-only
+    maxDimensions: 1
+  negativePatch: >
+    no oily skin, no western advertising model face, no studio-glamour posing,
+    no AI doll face, no porcelain skin, no heavy forehead-nose-cheek glare,
+    no cheap idol-drama lighting
+  bannedPromptTerms: [cinematic, beautiful, masterpiece, epic, dramatic]
+  textureLayers: [caustics, chromatic aberration, swirl bokeh, motion blur]
+  maxTextureLayers: 2
+  perShotLimits:
+    sceneFacts: [2, 3]
+    primaryAction: 1
+    secondaryClue: 1
+    lightSources: 1
+    compositionMechanisms: 1
+
+planFields:
+  - 人物
+  - 事件
+  - 镜头
+  - 光色
+  - 质感
+  - 保留人物身份
+
+scoring:
+  threshold: 82
+  rubric:
+    - { item: 人物在做事而非摆拍, max: 25 }
+    - { item: 身份与事件保留, max: 25 }
+    - { item: 光色有现场来源, max: 25 }
+    - { item: 质感层不超过两种, max: 25 }
+  vetoes:
+    - 换脸或陌生模特
+    - 默认欧美广告脸
+    - 油亮皮肤
+    - 影楼写真
+    - AI 娃娃脸

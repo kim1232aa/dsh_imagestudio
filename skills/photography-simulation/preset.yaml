@@ -1,0 +1,28 @@
+id: photography-simulation
+version: 0.1.0
+title: Fantasy photography simulation
+source: SKILL.md
+
+modes:
+  default:
+    shots: 1
+    aspectRatio: '3:2'
+
+constraints:
+  referenceImages:
+    usage: analysis-only
+    maxDimensions: 1
+  negativePatch: no CGI concept art, no plastic skin, no HDR
+  bannedPromptTerms: [cinematic, masterpiece]
+
+planFields:
+  - 地点
+  - 摄影风味
+  - 光线
+
+scoring:
+  threshold: 80
+  rubric:
+    - { item: 地点具体, max: 40 }
+    - { item: 摄影风味可执行, max: 40 }
+    - { item: 光线有来源, max: 20 }

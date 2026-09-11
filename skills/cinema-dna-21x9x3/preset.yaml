@@ -1,0 +1,81 @@
+id: cinema-dna-21x9x3
+version: 1.2.2
+title: CINEMA DNA 21:9 × 3
+source: SKILL.md
+
+modes:
+  triptych:
+    shots: 3
+    aspectRatio: '21:9'
+    compose:
+      mode: triptych
+      direction: vertical
+      gapPx: [8, 12]
+      ratios: ['1:1:1', '1.2:0.9:0.9', '0.9:1.2:0.9', '0.9:0.9:1.2']
+      decorations: none
+  poster:
+    trigger: explicit
+    shots: 1
+    aspectRatio: '3:4'
+    mustContainInPrompt: ['3:4 vertical poster composition']
+    textStrategy: two-stage
+
+constraints:
+  referenceImages:
+    usage: analysis-only
+    maxDimensions: 1
+  negativePatch: >
+    no CGI concept art, no game key art, no glossy AI rendering, no HDR,
+    no plastic skin, no excessive particles, no fantasy poster composition,
+    no teal-orange grading, no artificial rim light, no commercial beauty
+    lighting, no television-drama blocking
+  bannedPromptTerms:
+    - cinematic
+    - beautiful
+    - poetic
+    - emotional
+    - mysterious
+    - dramatic
+    - atmospheric
+    - masterpiece
+    - epic
+  perShotLimits:
+    sceneFacts: [2, 3]
+    primaryAction: 1
+    secondaryClue: 1
+    lightSources: 1
+    compositionMechanisms: 1
+
+planFields:
+  - 不可解决的状态
+  - 观众位置
+  - 主要构图压力
+  - 视线流量
+  - 色彩命题
+  - 成像基底
+  - 三联节奏
+
+scoring:
+  threshold: 82
+  rubric:
+    - { item: 构图有明确空间压力与观看立场, max: 25 }
+    - { item: 色彩命题清晰、物理来源可信, max: 20 }
+    - { item: 真人实景与摄影机质感, max: 20 }
+    - { item: 剧情有缺口、非电视剧化, max: 20 }
+    - { item: 三联剪辑变化与整体统一, max: 10 }
+    - { item: 原创隔离与参考安全, max: 5 }
+  posterBonus:
+    - { item: 片名准确、短、有冲突钩子, max: 5 }
+    - { item: 主视觉从分镜提炼而非拼贴, max: 5 }
+    - { item: 文字层级和留白可执行, max: 5 }
+    - { item: 可扩展为完整封面体系, max: 5 }
+  vetoes:
+    - 明显 CG / 游戏宣传图
+    - 过度油腻 AI 光效
+    - 普通电视剧式内容
+    - 直接复刻参考图
+    - 三张同机位、同动作、同构图
+
+variationRules:
+  minChangedDimensions: 4
+  dimensions: [景别, 机位高度, 人物与环境比例, 构图机制, 信息密度, 焦点层, 光线方向, 人物状态]

@@ -1,0 +1,7 @@
+- insert:
+    - id: image-core
+      name: '@dsh-imagestudio/dsh-image-core'
+    - id: image-provider-mock
+      name: '@dsh-imagestudio/dsh-image-provider-mock'
+    - id: image-tools
+      name: '@dsh-imagestudio/dsh-image-tools'

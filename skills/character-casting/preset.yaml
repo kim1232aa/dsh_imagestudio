@@ -1,0 +1,26 @@
+id: character-casting
+version: 0.1.0
+title: Character Casting Studio
+source: SKILL.md
+
+modes:
+  sheet:
+    shots: 0
+    aspectRatio: '3:4'
+
+constraints:
+  referenceImages:
+    usage: analysis-only
+  negativePatch: no celebrity likeness, no trademarked costume
+  bannedPromptTerms: [beautiful, cinematic]
+
+planFields:
+  - 外形
+  - 年龄
+  - 服装
+  - 气质
+
+scoring:
+  threshold: 70
+  rubric:
+    - { item: descriptor 可注入, max: 100 }

@@ -1,0 +1,28 @@
+{
+  "name": "dsh-imagestudio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH Image Studio — multi-provider image generation, skill-compiled creative plans, asset lifecycle, and compose for DeepSeek Harness.",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "echo 'Type-strip ESM; no emit required for Node 22.19+/24. Use tsc when publishing lib/.'"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "image-generation",
+    "cordis"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kim1232aa/dsh_imagestudio.git"
+  }
+}

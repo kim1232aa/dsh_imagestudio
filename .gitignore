@@ -1,0 +1,11 @@
+node_modules/
+lib/
+dist/
+coverage/
+.dsh/
+*.log
+.DS_Store
+.env
+.credentials.yaml
+tmp/
+.jspace/

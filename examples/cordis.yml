@@ -1,0 +1,31 @@
+# Minimal composition for a local dsh profile.
+# Requires: imagegen (core + one provider). tools plugin stays PENDING without them.
+
+- insert:
+    - id: image-core
+      name: '@dsh-imagestudio/dsh-image-core'
+
+    - id: image-provider-mock
+      name: '@dsh-imagestudio/dsh-image-provider-mock'
+
+    - id: image-provider-openai
+      name: '@dsh-imagestudio/dsh-image-provider-openai'
+      disabled: true
+      config:
+        providers:
+          - id: img2
+            protocol: openai-image
+            model: gpt-image-2
+            baseUrl: !!js process.env.IMG_BASE_URL ?? 'https://api.openai.com/v1'
+            apiKeyEnv: IMAGE_STUDIO_KEY
+
+    - id: image-skills
+      name: '@dsh-imagestudio/dsh-image-skills'
+      config:
+        dir: !!js process.env.DSH_SKILLS_DIR ?? './skills'
+        enabled: [cinema-dna-21x9x3, life-force-portrait]
+
+    - id: image-tools
+      name: '@dsh-imagestudio/dsh-image-tools'
+      config:
+        limits: { concurrency: 3, perTaskTimeoutMs: 180000, maxImagesPerCall: 4 }
