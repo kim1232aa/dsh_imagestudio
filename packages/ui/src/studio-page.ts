@@ -8,27 +8,27 @@ export function studioPage(opts: { embed?: boolean }): string {
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Image Studio</title>
 <style>
-:root{--bg:#12110e;--panel:#1b1a16;--ink:#efece3;--muted:#9a9486;--line:rgba(255,255,255,.08);--accent:#e8e4d4;--warn:#c45c26;}
+:root{--bg:#12110e;--panel:#1b1a16;--ink:#efece3;--muted:#9a9486;--line:rgba(255,255,255,.08);--accent:#e8e4d4;--warn:#c45c26;--ok:#8aa36b;}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,sans-serif}
-body{display:flex;flex-direction:column}
-header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line)}
-header b{letter-spacing:.04em}
-.modes{display:flex;gap:6px;margin-left:8px;flex-wrap:wrap}
+body{display:flex;flex-direction:column;min-width:0}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:nowrap;min-width:0;overflow:auto}
+header b{letter-spacing:.04em;white-space:nowrap}
+.modes{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
 .modes button,.chip,button.primary,select,textarea,input{font:inherit;color:inherit}
 .modes button,.chip{background:transparent;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
 .modes button[data-on],.chip[data-on]{background:var(--accent);color:#16140f;border-color:var(--accent)}
-.wrap{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0}
-aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:var(--panel)}
-main.stage{padding:16px;overflow:auto}
+.wrap{flex:1;display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);min-height:0;min-width:0}
+aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:var(--panel);min-width:0}
+main.stage{padding:16px;overflow:auto;min-width:0}
 label{display:block;color:var(--muted);font-size:12px;margin:10px 0 4px}
 textarea{width:100%;min-height:120px;background:#11100d;border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
 .row{display:flex;gap:8px;flex-wrap:wrap}
-.chip{margin:0}
 button.primary{width:100%;margin-top:14px;height:40px;border:0;border-radius:10px;background:var(--accent);color:#16140f;font-weight:650;cursor:pointer}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+button.primary:disabled{opacity:.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
 .card{background:#181712;border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:120px}
-.card img{width:100%;display:block;background:#000}
+.card img{width:100%;display:block;background:#000;aspect-ratio:21/9;object-fit:cover}
 .card .cap{padding:8px 10px;color:var(--muted);font-size:12px}
 .note{color:var(--muted);font-size:12px}
 pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;border:1px solid var(--line);font-size:12px}
@@ -36,6 +36,13 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 .skill{text-align:left;background:#14130f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer}
 .skill[data-on]{border-color:var(--accent)}
 .skill small{display:block;color:var(--muted)}
+.fail{display:none;margin:0 0 12px;padding:10px 12px;border:1px solid var(--warn);border-radius:10px;color:#f0c2a4;background:#2a1810}
+.fail[data-on]{display:block}
+details.plan{margin-top:14px;color:var(--muted);font-size:12px}
+details.plan pre{margin:8px 0 0}
+html[data-embed="1"] header{padding:8px 12px}
+html[data-embed="1"] .wrap{grid-template-columns:minmax(200px,280px) minmax(0,1fr)}
+a.back{color:inherit;margin-left:auto;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -49,8 +56,8 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
     <button data-mode="compose">三联</button>
     <button data-mode="assets">素材</button>
   </nav>
-  <span class="note" id="status" style="margin-left:auto">连接中…</span>
-  <a href="/" style="color:inherit;margin-left:12px">对话</a>
+  <span class="note" id="status">连接中…</span>
+  <a class="back" href="/">对话</a>
 </header>
 <div class="wrap">
 <aside>
@@ -80,11 +87,13 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
     <button class="chip" data-brief="明代科举舞弊案，夜审、账房、放榜。">夜审三联</button>
     <button class="chip" data-brief="雨后窗边人像，保留脸，只加胶片质感。">窗边人像</button>
     <button class="chip" data-brief="角色卡：青衫书吏，推开账房门。">书吏选角</button>
+    <button class="chip" data-brief="做成游戏宣传图，要过度油腻 AI 光效。">游戏CG应拒</button>
   </div>
 </aside>
 <main class="stage">
+  <div class="fail" id="fail"></div>
   <div class="grid" id="grid"></div>
-  <pre id="log" hidden></pre>
+  <details class="plan" id="planbox" hidden><summary>策划摘要（默认折叠）</summary><pre id="log"></pre></details>
 </main>
 </div>
 <script>
@@ -96,6 +105,7 @@ const SKILL_COPY = {
   'movie-poster': '3:4 海报；仅当用户要海报/封面/片名',
   'character-casting': '角色卡注入动作句'
 };
+const GO = { txt:'开始生成', img:'图生图', skill:'开始策划', describe:'反推这张', compose:'拼三联', assets:'刷新素材' };
 function $(id){return document.getElementById(id)}
 async function api(path, body){
   const res = await fetch('/imagestudio/api'+path, {
@@ -108,78 +118,87 @@ async function api(path, body){
   return data;
 }
 function setStatus(t){ $('status').textContent = t }
-function showLog(v){ const el=$('log'); el.hidden=!v; el.textContent = typeof v==='string'?v:JSON.stringify(v,null,2) }
-function renderSkills(list){
-  const box=$('skills'); box.innerHTML='';
-  (list.length?list:Object.keys(SKILL_COPY).map(id=>({preset:{id}}))).forEach(s=>{
-    const id=s.preset?.id||s.id;
-    const b=document.createElement('button');
-    b.className='skill';
-    if(id===state.skillId) b.setAttribute('data-on','');
-    b.innerHTML='<b>'+id+'</b><small>'+(SKILL_COPY[id]||'')+'</small>';
-    b.onclick=()=>{
-      state.skillId=id;
-      if(id==='cinema-dna-21x9x3'){ state.ratio='21:9'; state.lockRatio=true }
-      else { state.lockRatio=false }
-      if(id==='movie-poster' && /海报|封面|片名/.test($('brief').value)) state.ratio='3:4';
-      if(id==='life-force-portrait') state.ratio='3:4';
-      syncChips(); renderSkills(list);
-    };
-    box.appendChild(b);
-  });
+function showFail(msg){
+  const el=$('fail');
+  if(!msg){ el.removeAttribute('data-on'); el.textContent=''; return }
+  el.setAttribute('data-on','1'); el.textContent=msg;
+}
+function showLog(v){
+  const box=$('planbox'); const el=$('log');
+  if(!v){ box.hidden=true; el.textContent=''; return }
+  box.hidden=false;
+  el.textContent = typeof v==='string'?v:JSON.stringify(v,null,2);
+}
+function addCard(src, cap){
+  const card=document.createElement('div'); card.className='card';
+  const img=document.createElement('img'); img.src=src; img.alt=cap;
+  const p=document.createElement('div'); p.className='cap'; p.textContent=cap;
+  card.append(img,p); $('grid').prepend(card);
 }
 function syncChips(){
   document.querySelectorAll('#ratios .chip').forEach(b=>b.toggleAttribute('data-on', b.dataset.ratio===state.ratio));
   document.querySelectorAll('#counts .chip').forEach(b=>b.toggleAttribute('data-on', Number(b.dataset.n)===state.n));
+  document.querySelectorAll('#modes button').forEach(b=>b.toggleAttribute('data-on', b.dataset.mode===state.mode));
+  document.querySelectorAll('.skill').forEach(b=>b.toggleAttribute('data-on', b.dataset.skill===state.skillId));
+  $('go').textContent = GO[state.mode] || '开始生成';
 }
-function addCard(src, cap){
-  const c=document.createElement('article');
-  c.className='card';
-  c.innerHTML=(src?'<img alt="" src="'+src+'"/>':'')+'<div class="cap">'+(cap||'')+'</div>';
-  $('grid').prepend(c);
+function renderSkills(list){
+  $('skills').innerHTML='';
+  (list||[]).forEach(s=>{
+    const b=document.createElement('button');
+    b.className='skill'; b.dataset.skill=s.id;
+    b.innerHTML='<b>'+s.id+'</b><small>'+(SKILL_COPY[s.id]||s.title||'')+'</small>';
+    b.onclick=()=>{
+      state.skillId=s.id;
+      state.lockRatio = s.id==='cinema-dna-21x9x3';
+      if(state.lockRatio) state.ratio='21:9';
+      if(s.id==='life-force-portrait' || s.id==='movie-poster' || s.id==='character-casting') state.ratio='3:4';
+      if(s.id==='photography-simulation') state.ratio='3:2';
+      syncChips();
+    };
+    $('skills').append(b);
+  });
+  syncChips();
 }
 async function boot(){
   try{
-    const meta = await api('/meta');
+    const meta=await api('/meta');
     renderSkills(meta.skills||[]);
-    const sel=$('provider'); sel.innerHTML='';
+    const sel=$('provider');
     (meta.providers||[]).forEach(p=>{
-      const o=document.createElement('option');
-      o.value=p.id; o.textContent=p.id+' · '+(p.model||p.protocol);
-      sel.appendChild(o);
+      const o=document.createElement('option'); o.value=p.id; o.textContent=p.id+' · '+(p.model||p.protocol||'');
+      sel.append(o);
     });
-    if(meta.providers?.[0]) state.providerId=meta.providers[0].id;
-    setStatus('已连接 · '+(meta.providers||[]).map(p=>p.id).join('/') );
-  }catch(e){ setStatus('未连上 API'); showLog(String(e)) }
+    state.providerId=sel.value;
+    setStatus('mock 已连接 · 五个 skill');
+  }catch(e){ setStatus('未连上宿主'); showLog(String(e)); }
 }
-document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{
-  state.mode=b.dataset.mode;
-  document.querySelectorAll('#modes button').forEach(x=>x.toggleAttribute('data-on', x===b));
-});
+document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{ state.mode=b.dataset.mode; syncChips(); });
 document.querySelectorAll('#ratios .chip').forEach(b=>b.onclick=()=>{
   if(state.lockRatio && state.skillId==='cinema-dna-21x9x3'){ state.ratio='21:9'; syncChips(); return }
-  state.ratio=b.dataset.ratio;syncChips()
+  state.ratio=b.dataset.ratio; syncChips();
 });
 document.querySelectorAll('#counts .chip').forEach(b=>b.onclick=()=>{state.n=Number(b.dataset.n);syncChips()});
 document.querySelectorAll('#insp .chip').forEach(b=>b.onclick=()=>{ $('brief').value=b.dataset.brief||''; });
 $('provider').onchange=e=>state.providerId=e.target.value;
 $('go').onclick=async()=>{
   const brief=$('brief').value.trim();
+  showFail('');
   if((state.mode==='txt' || state.mode==='skill' || state.mode==='img') && !brief){
-    showLog('先写 brief'); return
+    showFail('先写 brief'); setStatus('先写 brief'); return;
   }
-  $('go').disabled=true; setStatus('生成中…');
+  $('go').disabled=true; setStatus('处理中…');
   try{
     if(state.mode==='skill'){
       const planned = await api('/plan', { skillId: state.skillId, brief, wantPoster: state.skillId==='movie-poster' });
-      showLog(planned);
-      if(planned.passed===false){ setStatus('未过检 '+planned.score); return }
+      showLog({ score:planned.score, passed:planned.passed, failures:planned.failures, shots:planned.plan?.shots?.map(s=>({id:s.id,ratio:s.aspectRatio})) });
+      if(planned.passed===false){ showFail('未过检 '+planned.score+' · '+(planned.failures||[]).join('；')); setStatus('未过检 '+planned.score); return }
       state.plan=planned.plan;
       setStatus('策划完成 · '+planned.score);
     } else if(state.mode==='txt'){
       const planned = await api('/plan', { skillId: state.skillId, brief, wantPoster: state.skillId==='movie-poster' });
-      showLog(planned);
-      if(planned.passed===false){ setStatus('未过检 '+planned.score); return }
+      showLog({ score:planned.score, passed:planned.passed, failures:planned.failures, planId:planned.planId });
+      if(planned.passed===false){ showFail('未过检 '+planned.score+' · '+(planned.failures||[]).join('；')); setStatus('未过检 '+planned.score); return }
       state.plan=planned.plan;
       const shots = planned.plan?.shots?.length ? planned.plan.shots : [null];
       for (const shot of shots){
@@ -195,27 +214,31 @@ $('go').onclick=async()=>{
           if(img.path) state.lastImages.push(img.path);
           addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path), (shot?.id||'shot')+' · '+(out.providerId||''));
         });
-        if(out.blocked) setStatus('拦截：'+out.reason);
-        if(out.passed===false) setStatus('分数不足 '+out.score);
+        if(out.blocked) showFail('拦截：'+out.reason);
+        if(out.passed===false) showFail('分数不足 '+out.score+'，不出图');
       }
       if(state.skillId==='cinema-dna-21x9x3' && planned.plan?.shots?.length>=3){
         setStatus('可在「三联」里把三镜拼起来');
       } else setStatus('完成');
     } else if(state.mode==='assets'){
-      const data=await api('/assets'); showLog(data);
-      setStatus('素材索引');
+      const data=await api('/assets');
+      showLog({ sessions:Object.keys(data.index||{}), count:(data.images||[]).length });
+      (data.images||[]).forEach(img=>{
+        addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path), (img.task||'').slice(0,8));
+      });
+      setStatus('素材 '+(data.images||[]).length+' 张');
     } else if(state.mode==='compose'){
       const assets=state.lastImages.slice(-3);
-      if(assets.length<2){ showLog('先出至少两张再三联'); return }
+      if(assets.length<2){ showFail('先出至少两张再三联'); setStatus('先出图'); return }
       const out=await api('/compose',{ mode:'triptych', assets, gap:10, ratios:'1:1:1' });
       (out.images||[]).forEach(img=>addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path),'triptych'));
       setStatus('三联完成');
     } else if(state.mode==='describe'){
-      if(!state.lastImages.length){ showLog('先出图再反推'); return }
+      if(!state.lastImages.length){ showFail('先出图再反推'); setStatus('先出图'); return }
       const out=await api('/describe',{ assets:state.lastImages.slice(-1) });
       showLog(out.text||out); setStatus('反推完成');
     } else if(state.mode==='img'){
-      if(!state.lastImages.length){ showLog('先有一张底图再图生图'); return }
+      if(!state.lastImages.length){ showFail('先有一张底图再图生图'); setStatus('先出图'); return }
       const out=await api('/edit',{ prompt:brief, assets:state.lastImages.slice(-1), aspectRatio:state.ratio, n:1, providerId:state.providerId });
       (out.images||[]).forEach(img=>{
         if(img.path) state.lastImages.push(img.path);
@@ -223,9 +246,9 @@ $('go').onclick=async()=>{
       });
       setStatus('图生图完成');
     } else {
-      showLog('未知模式');
+      showFail('未知模式');
     }
-  }catch(e){ setStatus('失败'); showLog(String(e)) }
+  }catch(e){ setStatus('失败'); showFail(String(e)); }
   finally{ $('go').disabled=false }
 };
 boot();

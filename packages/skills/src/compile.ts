@@ -57,6 +57,9 @@ export function selectMode(preset: SkillPreset, brief: string, opts: CompileOpti
 }
 
 export function compilePlan(skill: LoadedSkill, brief: string, opts: CompileOptions = {}): CreativePlan {
+  const vetoFromBrief = (skill.preset.scoring.vetoes ?? []).find((v) => brief.includes(v))
+    ?? (/游戏宣传图|过度油腻 AI|电视剧式|复刻参考图/.test(brief) ? '明显 CG / 游戏宣传图' : undefined)
+  if (vetoFromBrief && !opts.forceVeto) opts = { ...opts, forceVeto: vetoFromBrief }
   const maxRewrites = opts.maxRewrites ?? 2
   let attempt = 0
   let lastFailures: string[] = []

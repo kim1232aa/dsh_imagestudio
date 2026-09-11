@@ -22,17 +22,18 @@ const host = await bootStudio({
 
 const shell = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>DeepSeek Harness</title>
 <style>
+:root{--dsh-sidebar-width:260px}
 html,body{margin:0;height:100%;background:#101014;color:#eee;font:14px/1.4 ui-sans-serif,system-ui}
-aside{position:fixed;inset:0 auto 0 0;width:260px;border-right:1px solid #222;padding:16px}
-main{margin-left:260px;height:100%}
+aside{position:fixed;inset:0 auto 0 0;width:var(--dsh-sidebar-width);border-right:1px solid #222;padding:16px}
+main{margin-left:var(--dsh-sidebar-width);height:100%;display:flex;align-items:center;justify-content:center;color:#666}
 button{display:block;width:100%;margin:0 0 8px;height:36px;border:1px solid #333;border-radius:8px;background:#1a1a1f;color:#eee}
 iframe{width:100%;height:100%;border:0;background:#12110e}
 </style></head><body>
 <aside>
   <div style="opacity:.6;margin-bottom:12px">DeepSeek Harness</div>
-  <button>新会话</button>
+  <button type="button" id="new-session">新会话</button>
 </aside>
-<main id="main"></main>
+<main id="main">对话区 · 点侧栏「生图」打开 Image Studio</main>
 <script src="/imagestudio/entry.js" defer></script>
 </body></html>`
 

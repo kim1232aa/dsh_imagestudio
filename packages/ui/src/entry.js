@@ -1,60 +1,62 @@
 (() => {
   const BTN_ATTR = "data-imagestudio-entry";
-  const OVERLAY_ATTR = "data-imagestudio-overlay";
+  const FRAME_ATTR = "data-imagestudio-frame";
+
   function findNewSessionButton() {
-    const buttons = [...document.querySelectorAll("button")];
-    return buttons.find((b) => /新会话|New session|New Session/i.test(b.textContent || ""));
+    const nodes = [...document.querySelectorAll("button, a, [role='button']")];
+    return nodes.find((b) => /新会话|New session|New Session/i.test((b.textContent || "").replace(/\s+/g, "")));
   }
+
   function ensureButton() {
     if (document.querySelector("[" + BTN_ATTR + "]")) return;
     const origin = findNewSessionButton();
     if (!origin || !origin.parentElement) return;
-    const wrap = document.createElement("div");
-    wrap.setAttribute(BTN_ATTR, "1");
-    wrap.style.display = "flex";
-    wrap.style.gap = "6px";
-    wrap.style.width = "100%";
-    const cloneStyle = window.getComputedStyle(origin);
-    const make = (label, primary) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.textContent = label;
-      b.style.flex = "1";
-      b.style.height = cloneStyle.height;
-      b.style.borderRadius = cloneStyle.borderRadius || "8px";
-      b.style.border = "1px solid rgba(255,255,255,.08)";
-      b.style.background = primary ? "rgba(201,162,39,.18)" : cloneStyle.backgroundColor;
-      b.style.color = primary ? "#e8c547" : cloneStyle.color;
-      b.style.cursor = "pointer";
-      b.style.font = cloneStyle.font;
-      return b;
-    };
-    const chat = make("新会话", false);
-    const studio = make("生图", true);
-    chat.title = "回到对话";
+    const studio = document.createElement("button");
+    studio.type = "button";
+    studio.setAttribute(BTN_ATTR, "1");
+    studio.textContent = "生图";
     studio.title = "打开 Image Studio（Nova + Skills）";
-    chat.addEventListener("click", () => {
-      closeOverlay();
-      origin.click();
+    const cs = window.getComputedStyle(origin);
+    studio.style.cssText = [
+      "display:block",
+      "width:100%",
+      "margin:0 0 8px",
+      "height:" + (cs.height || "36px"),
+      "border-radius:" + (cs.borderRadius || "8px"),
+      "border:1px solid rgba(201,162,39,.45)",
+      "background:rgba(201,162,39,.16)",
+      "color:#e8c547",
+      "cursor:pointer",
+      "font:" + cs.font,
+    ].join(";");
+    studio.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openStudio();
     });
-    studio.addEventListener("click", () => openOverlay());
-    wrap.append(chat, studio);
-    origin.style.display = "none";
-    origin.parentElement.insertBefore(wrap, origin);
+    if (origin.nextSibling) origin.parentElement.insertBefore(studio, origin.nextSibling);
+    else origin.parentElement.appendChild(studio);
   }
-  function openOverlay() {
-    if (document.querySelector("[" + OVERLAY_ATTR + "]")) return;
-    const frame = document.createElement("iframe");
-    frame.setAttribute(OVERLAY_ATTR, "1");
-    frame.src = "/imagestudio?embed=1";
-    frame.style.cssText = "position:fixed;inset:0 0 0 var(--dsh-sidebar-width,260px);border:0;z-index:40;background:#101014;width:auto;height:100%;";
-    document.documentElement.setAttribute("data-imagestudio-open", "1");
-    document.body.append(frame);
+
+  function openStudio() {
+    const main = document.getElementById("main") || document.querySelector("main");
+    if (main) {
+      let frame = document.querySelector("[" + FRAME_ATTR + "]");
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.setAttribute(FRAME_ATTR, "1");
+        frame.setAttribute("title", "Image Studio");
+        frame.src = "/imagestudio?embed=1";
+        frame.style.cssText = "width:100%;height:100%;border:0;background:#12110e;display:block";
+        main.innerHTML = "";
+        main.appendChild(frame);
+      }
+      document.documentElement.setAttribute("data-imagestudio-open", "1");
+      return;
+    }
+    window.location.assign("/imagestudio");
   }
-  function closeOverlay() {
-    document.querySelectorAll("[" + OVERLAY_ATTR + "]").forEach((n) => n.remove());
-    document.documentElement.removeAttribute("data-imagestudio-open");
-  }
+
   const obs = new MutationObserver(() => ensureButton());
   obs.observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);

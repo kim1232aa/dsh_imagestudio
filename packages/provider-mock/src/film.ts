@@ -5,7 +5,7 @@ import { createSolid, encodePng, type RgbaImage } from '../../compose/src/png.ts
 export function createFilmStill(width: number, height: number, prompt: string): Uint8Array {
   const h = createHash('sha256').update(prompt).digest()
   const vermilion: [number, number, number] = [180 + (h[0] % 40), 70 + (h[1] % 30), 55 + (h[2] % 25)]
-  const teal: [number, number, number] = [18 + (h[3] % 16), 32 + (h[4] % 18), 36 + (h[5] % 16)]
+  const teal: [number, number, number] = [42 + (h[3] % 22), 48 + (h[4] % 20), 52 + (h[5] % 18)]
   const lamp: [number, number, number] = [220, 170, 90]
   const img = createSolid(width, height, [teal[0], teal[1], teal[2], 255])
   const bar = Math.max(4, Math.round(height * 0.07))
@@ -33,19 +33,19 @@ export function createFilmStill(width: number, height: number, prompt: string): 
       const dx = (x - cx) / figW
       const dy = (y - cy) / figH
       const fig = Math.max(0, 1 - (dx * dx + dy * dy * 0.6))
-      r = mix(r, 28, fig * 0.85)
-      g = mix(g, 24, fig * 0.85)
-      b = mix(b, 22, fig * 0.85)
+      r = mix(r, 92, fig * 0.7)
+      g = mix(g, 78, fig * 0.7)
+      b = mix(b, 64, fig * 0.7)
       const lx = x - width * 0.62
       const ly = y - height * 0.38
       const lampGlow = Math.exp(-(lx * lx + ly * ly) / (width * width * 0.04))
-      r = clamp(r + lamp[0] * lampGlow * 0.35)
-      g = clamp(g + lamp[1] * lampGlow * 0.22)
-      b = clamp(b + lamp[2] * lampGlow * 0.08)
+      r = clamp(r + lamp[0] * lampGlow * 0.55)
+      g = clamp(g + lamp[1] * lampGlow * 0.38)
+      b = clamp(b + lamp[2] * lampGlow * 0.16)
       const vig = Math.min(1, Math.hypot(nx - 0.5, ny - 0.5) * 1.4)
-      r = mix(r, 8, vig * 0.45)
-      g = mix(g, 10, vig * 0.45)
-      b = mix(b, 12, vig * 0.45)
+      r = mix(r, 18, vig * 0.28)
+      g = mix(g, 16, vig * 0.28)
+      b = mix(b, 14, vig * 0.28)
       const n = h[(x * 13 + y * 7) % h.length] - 128
       r = clamp(r + n * 0.08)
       g = clamp(g + n * 0.08)

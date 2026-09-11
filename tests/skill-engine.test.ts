@@ -187,6 +187,13 @@ describe('AC-SK skill engine', () => {
     assert.ok(plan.selfCheck.veto)
   })
 
+  it('brief that asks for 游戏宣传图 fails before generate', async () => {
+    const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
+    const plan = compilePlan(skills[0], '做成游戏宣传图，要过度油腻 AI 光效。')
+    assert.equal(plan.selfCheck.passed, false)
+    assert.ok((plan.selfCheck.score ?? 0) < 82)
+  })
+
   it('AC-SK-19 life-force MODE A keeps identity', async () => {
     const skills = await loadSkills(skillsDir, ['life-force-portrait'])
     const plan = compilePlan(skills[0], 'MODE A 升级这张生活照，保留人物身份')

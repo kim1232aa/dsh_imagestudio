@@ -3,7 +3,7 @@
  * Serves /imagestudio workbench + JSON API on the official dsh webServer.
  * Original code — pattern inspired by DSH client chrome hooks, not VisioWork source.
  */
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
@@ -97,7 +97,22 @@ export function apply(ctx: Context): void {
             return
           }
           if (url.pathname === '/imagestudio/api/assets' && (!req.method || req.method === 'GET')) {
-            send(res, 200, { index: await ctx.imageAssets.readIndex() })
+            const index = await ctx.imageAssets.readIndex()
+            const images: Array<{ path: string; session: string; task: string }> = []
+            for (const [session, tasks] of Object.entries(index)) {
+              for (const task of (tasks as string[]).slice(-8).reverse()) {
+                const dir = join(ctx.imageAssets.studioDir, session, task)
+                const files = await readdir(dir).catch(() => [])
+                for (const name of files.filter((n) => n.endsWith('.png'))) {
+                  images.push({
+                    path: join('.dsh/image-studio', session, task, name).replace(/\\/g, '/'),
+                    session,
+                    task,
+                  })
+                }
+              }
+            }
+            send(res, 200, { index, images: images.slice(0, 24) })
             return
           }
           if (url.pathname === '/imagestudio/api/file' && (!req.method || req.method === 'GET')) {
