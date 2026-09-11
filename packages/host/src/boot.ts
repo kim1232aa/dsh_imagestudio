@@ -10,8 +10,10 @@ import * as skills from '../../skills/src/index.ts'
 import * as mock from '../../provider-mock/src/index.ts'
 import * as openai from '../../provider-openai/src/index.ts'
 import * as tools from '../../tools/src/index.ts'
+import * as ui from '../../ui/src/index.ts'
 import { MiniTools } from './minitools.ts'
 import { createJobsStub, createLlmStub } from './stubs.ts'
+import { MemoryWebServer } from './memory-web.ts'
 
 /** FiberState is a const enum — compare these numbers, never import the enum. */
 export const STATE_PENDING = 0
@@ -27,6 +29,7 @@ export interface BootOptions {
 export interface StudioHost {
   ctx: Context
   tools: MiniTools
+  web: MemoryWebServer
   workspaceRoot: string
   fibers(): Array<{ name: string; uid: number | null; state: number }>
 }
@@ -37,6 +40,7 @@ export async function bootStudio(opts: BootOptions): Promise<StudioHost> {
   const mini = new MiniTools()
   const llm = createLlmStub()
   const jobs = createJobsStub()
+  const web = new MemoryWebServer()
 
   await ctx.plugin({
     name: 'image-studio-host',
@@ -44,6 +48,7 @@ export async function bootStudio(opts: BootOptions): Promise<StudioHost> {
       c.provide('tools', mini)
       c.provide('llm', llm)
       c.provide('jobs', jobs)
+      c.provide('webServer', web)
     },
   })
   await ctx.plugin(core)
@@ -68,10 +73,12 @@ export async function bootStudio(opts: BootOptions): Promise<StudioHost> {
   }
 
   await ctx.plugin(tools)
+  await ctx.plugin(ui)
 
   const host: StudioHost = {
     ctx,
     tools: mini,
+    web,
     workspaceRoot: opts.workspaceRoot,
     fibers() {
       const out: Array<{ name: string; uid: number | null; state: number }> = []

@@ -13,6 +13,7 @@ import { runGenerateOnContext } from '../../core/src/pipeline.ts'
 import type { ImageRequest } from '../../core/src/types.ts'
 import { studioPage } from './studio-page.ts'
 import { assertInsideWorkspace } from '../../assets/src/paths.ts'
+import { PathEscapeError } from '../../core/src/errors.ts'
 
 export const name = 'image-ui'
 export const inject = ['imagegen', 'imageSkills', 'imageAssets', 'imageCompose']
@@ -101,11 +102,16 @@ export function apply(ctx: Context): void {
           }
           if (url.pathname === '/imagestudio/api/file' && (!req.method || req.method === 'GET')) {
             const rel = url.searchParams.get('path') ?? ''
-            const abs = join(ctx.imageAssets.root, rel)
-            assertInsideWorkspace(ctx.imageAssets.root, abs)
-            const bytes = await readFile(abs)
-            res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' })
-            res.end(bytes)
+            try {
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const bytes = await readFile(abs)
+              res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' })
+              res.end(bytes)
+            } catch (err) {
+              const status = err instanceof PathEscapeError ? 403 : 404
+              send(res, status, { error: err instanceof Error ? err.message : String(err) })
+            }
             return
           }
           if (req.method === 'POST' && url.pathname.startsWith('/imagestudio/api/')) {
@@ -187,7 +193,8 @@ export function apply(ctx: Context): void {
           }
           send(res, 404, { error: 'not found' })
         } catch (err) {
-          send(res, 500, { error: err instanceof Error ? err.message : String(err) })
+          const status = err instanceof PathEscapeError ? 403 : 500
+          send(res, status, { error: err instanceof Error ? err.message : String(err) })
         }
       },
     })
@@ -198,10 +205,23 @@ export function apply(ctx: Context): void {
       disposeTap = web.tapIndex((html) => (html.includes(scriptTag) ? html : html.replace('</body>', `${scriptTag}</body>`)))
     }
 
+    const slots = webCtx as Context & {
+      slot?: (name: string, opts: Record<string, unknown>, render?: () => string) => () => void
+    }
+    let disposeSlot: (() => void) | undefined
+    if (typeof slots.slot === 'function') {
+      try {
+        disposeSlot = slots.slot('sidebar.panellist', { id: 'imagestudio', title: '生图', href: '/imagestudio' }, () => '')
+      } catch {
+        disposeSlot = undefined
+      }
+    }
+
     ctx.effect(() => {
       return () => {
         disposePage()
         disposeTap?.()
+        disposeSlot?.()
       }
     }, 'image-ui:routes')
   }

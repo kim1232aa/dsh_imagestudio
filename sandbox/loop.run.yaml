@@ -1,0 +1,7 @@
+prompt: Close remaining v0.2 acceptance gaps in dsh_imagestudio so docs/01-03 AC-UI/AC-LC/AC-TL P items are proven by automated tests. Independent 生图 workbench in official DSH chrome; Nova+5 skills; no VisioWork source.
+repo: /home/workdir/artifacts/dsh_imagestudio
+plan_file: /home/workdir/artifacts/dsh_imagestudio/sandbox/plan.md
+tasks_file: /home/workdir/artifacts/dsh_imagestudio/sandbox/tasks.json
+pr_loc: "100-400"
+sandbox_root: /home/workdir/artifacts/dsh_imagestudio/sandbox
+budget: 5

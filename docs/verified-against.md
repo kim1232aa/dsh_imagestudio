@@ -1,3 +1,11 @@
+# 文档版本
+
+- v0.1 设计稿假设「只提供模型可见工具」。该假设已被否决。
+- v0.2（2026-09-12）形态修正：独立工作台为 P0。见 `01-设计文档.md` / `02-设计规范.md` / `03-验收规范.md`。
+- 挂法参考 VisioWork，内容为 Nova IA + 五个 FANTASY skill；不搬源码。
+- 后端任务/产物走 dsh jobs / session / 工作区文件。
+
+
 # verified-against
 
 dsh is a developer preview and will break contracts. Record the commit we last ran AC-LC / AC-TL / AC-EV against.

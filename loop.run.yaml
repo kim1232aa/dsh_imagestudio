@@ -1,0 +1,16 @@
+prompt: Finish v0.2 DSH Image Studio independent workbench per docs/01-设计文档.md
+repo: /home/workdir/artifacts/dsh_imagestudio
+tasks_file: /home/workdir/artifacts/dsh_imagestudio/sandbox/tasks.json
+test_command: "node --test --experimental-strip-types tests/*.test.ts"
+sandbox_root: /home/workdir/artifacts/dsh_imagestudio/sandbox
+iter_strategy: snapshots
+pr_mode: none
+base_branch: main
+task_budget: 6
+patience: 2
+quality_thresholds:
+  max_comment_block: 8
+  max_comment_line_len: 100
+  max_func_loc: 80
+  max_nesting: 5
+  max_file_loc: 500

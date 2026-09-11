@@ -16,6 +16,15 @@ import * as mockPlugin from '../packages/provider-mock/src/index.ts'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 describe('AC-CP official DSH plugin contract', () => {
+  it('README documents v0.2 生图 entry and five skills', () => {
+    const text = readFileSync(join(root, 'README.md'), 'utf8')
+    assert.match(text, /生图/)
+    assert.match(text, /\/imagestudio/)
+    assert.match(text, /cinema-dna-21x9x3/)
+    assert.match(text, /image-ui/)
+    assert.doesNotMatch(text, /实现无限画布|电商模式已上线/)
+  })
+
   it('AC-CP-04 root package.json declares dsh.bundle.patch and cordis peer range', () => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
     assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml')

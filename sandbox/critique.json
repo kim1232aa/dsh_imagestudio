@@ -1,0 +1,13 @@
+{
+  "verdict": "pass",
+  "score": 4,
+  "issues": [
+    {
+      "severity": "minor",
+      "message": "Live official dsh web chrome (AC-UI-01 click) remains a manual check; MemoryWebServer covers the same routes.",
+      "fix": "Run npx @deepseek-ai/dsh web --patch ./examples/dsh-web.patch.yml on a machine with dsh."
+    }
+  ],
+  "coverage_gaps": [],
+  "suggested_skills": []
+}

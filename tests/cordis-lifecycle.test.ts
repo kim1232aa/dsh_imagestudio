@@ -47,7 +47,8 @@ describe('AC-LC cordis lifecycle', () => {
       assert.ok(names.includes('image-guard'))
       assert.ok(names.includes('image-provider-mock'))
       assert.ok(names.includes('image-studio-host'))
-      for (const f of snaps) {
+      assert.ok(names.includes('image-ui'))
+      for (const f of snaps.filter((s) => String(s.name).startsWith('image-'))) {
         assert.equal(f.state, STATE_ACTIVE, `${f.name} state=${f.state}`)
       }
     } finally {

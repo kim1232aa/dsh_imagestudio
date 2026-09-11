@@ -50,6 +50,7 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
     <button data-mode="assets">素材</button>
   </nav>
   <span class="note" id="status" style="margin-left:auto">连接中…</span>
+  <a href="/" style="color:inherit;margin-left:12px">对话</a>
 </header>
 <div class="wrap">
 <aside>
@@ -74,6 +75,12 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
   <select id="provider" style="width:100%;height:34px;background:#11100d;border:1px solid var(--line);border-radius:8px"></select>
   <button class="primary" id="go">开始生成</button>
   <p class="note" id="hint">Skill 会先 image_skill_plan，再按镜头出图。cinema-dna 低于 82 分不出图。</p>
+  <label>灵感</label>
+  <div class="row" id="insp">
+    <button class="chip" data-brief="明代科举舞弊案，夜审、账房、放榜。">夜审三联</button>
+    <button class="chip" data-brief="雨后窗边人像，保留脸，只加胶片质感。">窗边人像</button>
+    <button class="chip" data-brief="角色卡：青衫书吏，推开账房门。">书吏选角</button>
+  </div>
 </aside>
 <main class="stage">
   <div class="grid" id="grid"></div>
@@ -81,7 +88,7 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 </main>
 </div>
 <script>
-const state = { mode:'txt', skillId:'cinema-dna-21x9x3', ratio:'21:9', n:1, providerId:'', plan:null };
+const state = { mode:'txt', skillId:'cinema-dna-21x9x3', ratio:'21:9', lockRatio:true, n:1, providerId:'', plan:null, lastImages:[] };
 const SKILL_COPY = {
   'cinema-dna-21x9x3': '21:9 电影三联，8–12px 黑缝，导演判断先于出图',
   'life-force-portrait': 'MODE A 保身份的人像质感升级',
@@ -112,8 +119,10 @@ function renderSkills(list){
     b.innerHTML='<b>'+id+'</b><small>'+(SKILL_COPY[id]||'')+'</small>';
     b.onclick=()=>{
       state.skillId=id;
-      if(id==='cinema-dna-21x9x3') state.ratio='21:9';
-      if(id==='movie-poster' || id==='life-force-portrait') state.ratio='3:4';
+      if(id==='cinema-dna-21x9x3'){ state.ratio='21:9'; state.lockRatio=true }
+      else { state.lockRatio=false }
+      if(id==='movie-poster' && /海报|封面|片名/.test($('brief').value)) state.ratio='3:4';
+      if(id==='life-force-portrait') state.ratio='3:4';
       syncChips(); renderSkills(list);
     };
     box.appendChild(b);
@@ -147,15 +156,27 @@ document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{
   state.mode=b.dataset.mode;
   document.querySelectorAll('#modes button').forEach(x=>x.toggleAttribute('data-on', x===b));
 });
-document.querySelectorAll('#ratios .chip').forEach(b=>b.onclick=()=>{state.ratio=b.dataset.ratio;syncChips()});
+document.querySelectorAll('#ratios .chip').forEach(b=>b.onclick=()=>{
+  if(state.lockRatio && state.skillId==='cinema-dna-21x9x3'){ state.ratio='21:9'; syncChips(); return }
+  state.ratio=b.dataset.ratio;syncChips()
+});
 document.querySelectorAll('#counts .chip').forEach(b=>b.onclick=()=>{state.n=Number(b.dataset.n);syncChips()});
+document.querySelectorAll('#insp .chip').forEach(b=>b.onclick=()=>{ $('brief').value=b.dataset.brief||''; });
 $('provider').onchange=e=>state.providerId=e.target.value;
 $('go').onclick=async()=>{
   const brief=$('brief').value.trim();
-  if(!brief){ showLog('先写 brief'); return }
+  if((state.mode==='txt' || state.mode==='skill' || state.mode==='img') && !brief){
+    showLog('先写 brief'); return
+  }
   $('go').disabled=true; setStatus('生成中…');
   try{
-    if(state.mode==='skill' || state.mode==='txt'){
+    if(state.mode==='skill'){
+      const planned = await api('/plan', { skillId: state.skillId, brief, wantPoster: state.skillId==='movie-poster' });
+      showLog(planned);
+      if(planned.passed===false){ setStatus('未过检 '+planned.score); return }
+      state.plan=planned.plan;
+      setStatus('策划完成 · '+planned.score);
+    } else if(state.mode==='txt'){
       const planned = await api('/plan', { skillId: state.skillId, brief, wantPoster: state.skillId==='movie-poster' });
       showLog(planned);
       if(planned.passed===false){ setStatus('未过检 '+planned.score); return }
@@ -170,7 +191,10 @@ $('go').onclick=async()=>{
           n: shot?1:state.n,
           providerId: state.providerId
         });
-        (out.images||[]).forEach((img,i)=>addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path), (shot?.id||'shot')+' · '+(out.providerId||'')));
+        (out.images||[]).forEach((img)=>{
+          if(img.path) state.lastImages.push(img.path);
+          addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path), (shot?.id||'shot')+' · '+(out.providerId||''));
+        });
         if(out.blocked) setStatus('拦截：'+out.reason);
         if(out.passed===false) setStatus('分数不足 '+out.score);
       }
@@ -180,8 +204,26 @@ $('go').onclick=async()=>{
     } else if(state.mode==='assets'){
       const data=await api('/assets'); showLog(data);
       setStatus('素材索引');
+    } else if(state.mode==='compose'){
+      const assets=state.lastImages.slice(-3);
+      if(assets.length<2){ showLog('先出至少两张再三联'); return }
+      const out=await api('/compose',{ mode:'triptych', assets, gap:10, ratios:'1:1:1' });
+      (out.images||[]).forEach(img=>addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path),'triptych'));
+      setStatus('三联完成');
+    } else if(state.mode==='describe'){
+      if(!state.lastImages.length){ showLog('先出图再反推'); return }
+      const out=await api('/describe',{ assets:state.lastImages.slice(-1) });
+      showLog(out.text||out); setStatus('反推完成');
+    } else if(state.mode==='img'){
+      if(!state.lastImages.length){ showLog('先有一张底图再图生图'); return }
+      const out=await api('/edit',{ prompt:brief, assets:state.lastImages.slice(-1), aspectRatio:state.ratio, n:1, providerId:state.providerId });
+      (out.images||[]).forEach(img=>{
+        if(img.path) state.lastImages.push(img.path);
+        addCard('/imagestudio/api/file?path='+encodeURIComponent(img.path),'edit');
+      });
+      setStatus('图生图完成');
     } else {
-      showLog('当前模式请先在文生图/Skill 策划里出图，再切三联或反推。');
+      showLog('未知模式');
     }
   }catch(e){ setStatus('失败'); showLog(String(e)) }
   finally{ $('go').disabled=false }

@@ -1,0 +1,13 @@
+iter	task	phase	tests	quality	pass	note
+0	-	baseline	48/48	-	-	clean baseline before T1
+1	T1	engineer	-	-	-	mount image-ui + MemoryWebServer in bootStudio
+1	T1	qa	52/52	min4	yes	AC-UI-01 HTML 200; image-ui fiber ACTIVE
+2	T2	engineer	-	-	-	plan/generate/file 403 on memory web
+2	T2	qa	52/52	min4	yes	AC-UI-06 generate; AC-UI-09 403
+3	T3	engineer	-	-	-	studio modes compose/describe/edit + 对话
+3	T3	qa	52/52	min4	yes	page tests; no VisioWork/canvas
+4	-	end	52/52	-	yes	pr_mode=none no remote PR
+5	cont	qa	58/58	min4	yes	AC-UI-08/09 AC-TL-20/21 AC-EV-03
+
+6	plan-loop	validate	-	ok	yes	validate_plan.py ok tasks=4
+7	T1-T4	qa	60/60	min4	yes	AC-UI-11 + README v0.2 critique pass

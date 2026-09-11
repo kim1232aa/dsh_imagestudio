@@ -1,0 +1,162 @@
+{
+  "objective": "Close remaining v0.2 acceptance gaps so the independent Image Studio workbench, five FANTASY skills, and six image_* tools match docs/01-03 and are proven by automated tests.",
+  "end_state": "GET /imagestudio serves the Nova+skill workbench; entry.js adds 生图 beside 新会话 and can return to 对话; plan/generate/compose/file share the tool pipeline; score<82 skips provider; node --test tests/*.test.ts is green; no VisioWork/Nova source or canvas/ecommerce.",
+  "non_goals": [
+    "Live official dsh web screenshot as a CI gate",
+    "GitHub force-push from this host",
+    "Copying VisioWork or Nova frontend source",
+    "Infinite canvas or ecommerce mode"
+  ],
+  "environment": {
+    "language": "TypeScript",
+    "runtime": "Node.js ^22.19 || >=24 with --experimental-strip-types",
+    "package_manager": "pnpm",
+    "os": "linux",
+    "test_command": "node --test --experimental-strip-types tests/*.test.ts",
+    "notes": "Repo already boots via packages/host/src/boot.ts + MemoryWebServer. Official dsh web uses tapIndex + /imagestudio."
+  },
+  "components": [
+    {
+      "id": "c-entry",
+      "name": "DSH chrome entry",
+      "description": "生图 button next to 新会话, overlay or /imagestudio page, 对话 return, dispose removes routes."
+    },
+    {
+      "id": "c-workbench",
+      "name": "Image Studio workbench",
+      "description": "Original Nova-like page: txt/img/skill/describe/compose/assets, five skill cards, 21:9 lock, inspiration chips."
+    },
+    {
+      "id": "c-pipeline",
+      "name": "Shared generate pipeline",
+      "description": "image-core events, skills compile, six tools, assets sandbox, compose triptych."
+    },
+    {
+      "id": "c-accept",
+      "name": "Acceptance tests",
+      "description": "Automated AC-UI / AC-TL / AC-EV / AC-LC cases in tests/."
+    }
+  ],
+  "open_questions": [
+    "Real dsh web port may be 3080 or 8080 depending on host profile; tests use MemoryWebServer so they are port-agnostic."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Lock chrome entry and uninstall behavior",
+      "serves": ["c-entry", "c-accept"],
+      "description": "Keep entry.js as the official-chrome hook. Prove 生图/对话 strings and that disposing image-ui drops /imagestudio routes (AC-UI-01/03/11).",
+      "building_blocks": ["packages/ui/src/entry.js", "packages/ui/src/index.ts", "MemoryWebServer"],
+      "tools": ["node:test"],
+      "packages": ["@deepseek-ai/cordis"],
+      "files": [
+        {"path": "packages/ui/src/entry.js", "action": "modify", "what": "ensure 生图 + close overlay back to chat"},
+        {"path": "tests/ui-entry.test.ts", "action": "modify", "what": "assert 生图 and 对话 without vendor selectors"},
+        {"path": "tests/ui-routes.test.ts", "action": "modify", "what": "AC-UI-11 dispose image-ui then /imagestudio is gone"}
+      ],
+      "subtasks": [
+        {"id": "T1.1", "description": "Read entry.js and keep MutationObserver insert beside 新会话"},
+        {"id": "T1.2", "description": "Add test that disposing the image-ui fiber unregisters MemoryWebServer routes"},
+        {"id": "T1.3", "description": "Do not import VisioWork selectors"}
+      ],
+      "tests": [
+        {"description": "entry.js contains 生图 and /imagestudio, not data-dsh-imagegen-session-tabs", "kind": "unit"},
+        {"description": "after image-ui dispose, GET /imagestudio is not 200 from this plugin", "kind": "integration"}
+      ],
+      "acceptance_criteria": [
+        "AC-UI-01 string/hook present",
+        "AC-UI-03 对话 control present in studio page",
+        "AC-UI-11 dispose drops the prefix route"
+      ],
+      "depends_on": [],
+      "estimated_loc": 80,
+      "suggested_skills": ["test-driven-development"]
+    },
+    {
+      "id": "T2",
+      "title": "Keep workbench APIs on the shared pipeline",
+      "serves": ["c-workbench", "c-pipeline", "c-accept"],
+      "description": "No new generate path. Confirm plan/generate/compose/file already call compile + runGenerateOnContext + imageCompose. Fill any missing AC-UI-08/09 and AC-TL-20/21 tests.",
+      "building_blocks": ["runGenerateOnContext", "ctx.imageSkills.compile", "assertInsideWorkspace"],
+      "tools": ["node:test"],
+      "packages": [],
+      "files": [
+        {"path": "packages/ui/src/index.ts", "action": "modify", "what": "only if a route still bypasses the pipeline"},
+        {"path": "packages/ui/src/studio-page.ts", "action": "modify", "what": "keep 21:9 lock and mode handlers"},
+        {"path": "tests/ui-routes.test.ts", "action": "modify", "what": "AC-UI-08/09 AC-TL-20/21 AC-EV-03"}
+      ],
+      "subtasks": [
+        {"id": "T2.1", "description": "Do not add a second generate implementation in the UI plugin"},
+        {"id": "T2.2", "description": "Keep PathEscapeError mapped to HTTP 403"},
+        {"id": "T2.3", "description": "Keep cinema-dna lockRatio 21:9 in studio-page.ts"}
+      ],
+      "tests": [
+        {"description": "low-score plan does not increment mock.calls", "kind": "integration"},
+        {"description": "compose does not increment mock.calls", "kind": "integration"},
+        {"description": "workbench plan aspect equals image_skill_plan", "kind": "integration"}
+      ],
+      "acceptance_criteria": [
+        "AC-UI-04/06/08/09",
+        "AC-TL-20/21",
+        "AC-EV-03"
+      ],
+      "depends_on": ["T1"],
+      "estimated_loc": 120,
+      "suggested_skills": []
+    },
+    {
+      "id": "T3",
+      "title": "Align README with v0.2 docs",
+      "serves": ["c-entry", "c-workbench"],
+      "description": "README must say the entry is 生图 / /imagestudio, not Settings cards, and list the five skills and six tools.",
+      "building_blocks": ["docs/01-设计文档.md"],
+      "tools": [],
+      "packages": [],
+      "files": [
+        {"path": "README.md", "action": "modify", "what": "v0.2 entry + install + non-goals"}
+      ],
+      "subtasks": [
+        {"id": "T3.1", "description": "Write Requires: tools llm jobs plus image-* services"},
+        {"id": "T3.2", "description": "Document dsh plugin add and --patch examples/dsh-web.patch.yml"},
+        {"id": "T3.3", "description": "State 插件配置 is not the product entry"}
+      ],
+      "tests": [
+        {"description": "README contains 生图 and /imagestudio and the five skill ids", "kind": "unit"}
+      ],
+      "acceptance_criteria": [
+        "README matches docs/01 product shape",
+        "No claim of infinite canvas"
+      ],
+      "depends_on": ["T2"],
+      "estimated_loc": 60,
+      "suggested_skills": []
+    },
+    {
+      "id": "T4",
+      "title": "Full suite gate",
+      "serves": ["c-accept", "c-pipeline"],
+      "description": "Run the whole node:test suite and record the count. Fix any regression from T1-T3.",
+      "building_blocks": ["tests/*.test.ts"],
+      "tools": ["node:test"],
+      "packages": [],
+      "files": [
+        {"path": "sandbox/ledger.tsv", "action": "modify", "what": "record final pass count"}
+      ],
+      "subtasks": [
+        {"id": "T4.1", "description": "Run node --test --experimental-strip-types tests/*.test.ts"},
+        {"id": "T4.2", "description": "If fail, fix only the broken file named in the stack"}
+      ],
+      "tests": [
+        {"description": "full suite pass", "kind": "integration"}
+      ],
+      "acceptance_criteria": [
+        "All tests in tests/ pass",
+        "No new VisioWork selectors introduced"
+      ],
+      "depends_on": ["T3"],
+      "estimated_loc": 40,
+      "suggested_skills": ["verification-before-completion"]
+    }
+  ],
+  "order": ["T1", "T2", "T3", "T4"]
+}
