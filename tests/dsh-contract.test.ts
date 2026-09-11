@@ -49,6 +49,7 @@ describe('AC-CP official DSH plugin contract', () => {
       'image-skills',
       'image-provider-mock',
       'image-tools',
+      'image-ui',
     ]) {
       assert.match(yml, new RegExp(`id:\\s*${id}`), `missing ${id}`)
     }

@@ -40,6 +40,13 @@ describe('image-ui workbench', () => {
     assert.doesNotMatch(js, /data-dsh-imagegen-session-tabs/)
   })
 
+  it('image-ui also uses official webserver/index-inject', () => {
+    const src = readFileSync(new URL('../packages/ui/src/index.ts', import.meta.url), 'utf8')
+    assert.match(src, /webserver\/index-inject/)
+    assert.match(src, /script-src/)
+    assert.match(src, /\/imagestudio\/entry\.js/)
+  })
+
   it('file API rejects path escape as PathEscapeError (AC-UI-09)', () => {
     assert.throws(() => assertInsideWorkspace('/tmp/ws', '../etc/passwd'), PathEscapeError)
   })

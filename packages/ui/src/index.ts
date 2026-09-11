@@ -220,6 +220,14 @@ export function apply(ctx: Context): void {
       disposeTap = web.tapIndex((html) => (html.includes(scriptTag) ? html : html.replace('</body>', `${scriptTag}</body>`)))
     }
 
+    // Official preferred injection (webserver/index-inject). tapIndex remains fallback.
+    const injectRow = (table: Array<Record<string, unknown>>) => {
+      if (!table.some((r) => r.src === '/imagestudio/entry.js')) {
+        table.push({ kind: 'script-src', placement: 'body', src: '/imagestudio/entry.js' })
+      }
+    }
+    const disposeInject = typeof ctx.on === 'function' ? ctx.on('webserver/index-inject', injectRow) : undefined
+
     const slots = webCtx as Context & {
       slot?: (name: string, opts: Record<string, unknown>, render?: () => string) => () => void
     }
@@ -236,6 +244,7 @@ export function apply(ctx: Context): void {
       return () => {
         disposePage()
         disposeTap?.()
+        disposeInject?.()
         disposeSlot?.()
       }
     }, 'image-ui:routes')
