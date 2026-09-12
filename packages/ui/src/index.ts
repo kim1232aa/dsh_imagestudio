@@ -14,6 +14,7 @@ import { JobStore } from '../../core/src/jobs.ts'
 import type { ImageRequest } from '../../core/src/types.ts'
 import { studioPage } from './studio-page.ts'
 import { defaultProject, placeResultNode, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
+import { buildEcomPlan, type EcomPlan } from './ecom-plan.ts'
 import { assertInsideWorkspace } from '../../assets/src/paths.ts'
 import { PathEscapeError } from '../../core/src/errors.ts'
 
@@ -275,6 +276,42 @@ export function apply(ctx: Context): void {
                   if (img.path) next = placeResultNode(next, configNodeId, img)
                 }
                 send(res, 200, { jobId: job.id, project: next, images })
+              } catch (err) {
+                const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
+                send(res, aborted ? 200 : 500, { error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/ecom/preview') {
+              const plan = buildEcomPlan({ sku: body.sku || '', uses: body.uses })
+              send(res, 200, { ...plan, generated: false })
+              return
+            }
+            if (url.pathname === '/imagestudio/api/ecom/confirm') {
+              const plan = (body.plan || buildEcomPlan({ sku: body.sku || '', uses: body.uses })) as EcomPlan
+              const job = jobStore.create({ kind: 'image', prompt: `ecom:${plan.sku}` })
+              try {
+                const images: Array<Record<string, unknown>> = []
+                let heroPath = ''
+                for (const shot of plan.shots) {
+                  const reqImg: ImageRequest = {
+                    prompt: shot.prompt,
+                    aspectRatio: shot.aspectRatio || '1:1',
+                    n: 1,
+                    refUsage: heroPath && shot.role !== 'hero' ? 'image-to-image' : 'analysis-only',
+                    refImages: heroPath
+                      ? [{ path: heroPath, width: 0, height: 0, mime: 'image/png', sha256: '' }]
+                      : undefined,
+                    shotId: shot.id,
+                  }
+                  const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
+                  const first = (out as { images?: Array<{ path: string }> }).images?.[0]
+                  if (shot.role === 'hero' && first?.path) heroPath = first.path
+                  if (first) images.push({ ...first, role: shot.role, usage: shot.usage, title: shot.title, prompt: shot.prompt })
+                }
+                jobStore.finish(job.id, 'done')
+                send(res, 200, { jobId: job.id, sku: plan.sku, count: images.length, images })
               } catch (err) {
                 const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
                 jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))

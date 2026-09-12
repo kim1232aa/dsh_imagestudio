@@ -149,12 +149,20 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
 </section>
 
 <section class="page" data-page="ecom">
-  <div class="empty">
+  <div class="empty" style="max-width:720px">
     <h3>电商套图</h3>
-    <p>上传最多 4 张商品图。先出套图计划，确认后再批量生成。</p>
+    <p>先出计划，确认后才批量出图。普通生图不弹这个确认。</p>
     <label>商品名</label>
     <input id="sku" placeholder="青瓷茶盏"/>
-    <p class="note">会花钱的大批量才需要确认，普通生图不弹窗。</p>
+    <label>用途（可勾选，可改数量）</label>
+    <div id="ecomUses" class="row"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="ecomPreview">生成套图预览</button>
+      <button id="ecomConfirm" hidden>确认生成 <span id="ecomCount"></span></button>
+    </div>
+    <p class="note" id="ecomHint">预览只出计划，不会请求生图。</p>
+    <ol id="ecomPlan" class="note"></ol>
+    <div id="ecomOut" class="grid" style="margin-top:12px"></div>
   </div>
 </section>
 
@@ -452,6 +460,63 @@ $('randInsp') && ($('randInsp').onclick = () => {
 $('enhance') && ($('enhance').onclick = () => {
   setStatus('未配置提示词增强模型。到设置里给「提示词增强」指定一个聊天模型后再用。');
 });
+(function bindEcom(){
+  const uses = [
+    {id:'hero', name:'主图白底', n:1},
+    {id:'detail', name:'细节特写', n:1},
+    {id:'scene', name:'场景氛围', n:1},
+    {id:'scale', name:'尺寸对比', n:1},
+    {id:'poster', name:'卖点海报', n:1},
+    {id:'pack', name:'包装展示', n:1}
+  ];
+  const box = $('ecomUses');
+  if (!box) return;
+  uses.forEach(u => {
+    const lab = document.createElement('label');
+    lab.style.display = 'flex';
+    lab.style.alignItems = 'center';
+    lab.style.gap = '6px';
+    lab.innerHTML = '<input type="checkbox" checked data-id="'+u.id+'"/> '+u.name
+      +' <input type="number" min="1" max="4" value="'+u.n+'" data-n="'+u.id+'" style="width:52px"/>';
+    box.append(lab);
+  });
+  let plan = null;
+  function picked(){
+    return uses.map(u => {
+      const on = box.querySelector('input[type=checkbox][data-id="'+u.id+'"]');
+      const n = box.querySelector('input[data-n="'+u.id+'"]');
+      return { id: u.id, n: on && on.checked ? Number(n && n.value || 1) : 0 };
+    }).filter(u => u.n > 0);
+  }
+  $('ecomPreview').onclick = async () => {
+    const sku = $('sku').value.trim() || '商品';
+    const out = await api('/ecom/preview', { sku, uses: picked() });
+    plan = out;
+    const ol = $('ecomPlan');
+    ol.innerHTML = (out.shots||[]).map(s => '<li>'+escapeHtml(s.title)+' · '+s.aspectRatio+' · '+escapeHtml(s.prompt)+'</li>').join('');
+    $('ecomCount').textContent = '（'+out.count+' 张）';
+    $('ecomConfirm').hidden = false;
+    $('ecomHint').textContent = '将生成 '+out.count+' 张。确认后才出图。';
+    setStatus('套图计划已出，未生图');
+  };
+  $('ecomConfirm').onclick = async () => {
+    if (!plan) { setStatus('先预览计划'); return; }
+    setStatus('套图生成中…');
+    const out = await api('/ecom/confirm', { plan });
+    if (out.error) { setStatus(String(out.error)); return; }
+    const dest = $('ecomOut');
+    dest.innerHTML = '';
+    (out.images||[]).forEach((img, i) => {
+      const d = document.createElement('div');
+      d.className = 'card';
+      if (i===0) d.style.gridColumn = '1 / -1';
+      const src = '/imagestudio/api/file?path='+encodeURIComponent(img.path||'');
+      d.innerHTML = '<img src="'+src+'" alt=""/><div class="cap">'+(escapeHtml(img.title||img.role||''))+'</div>';
+      dest.append(d);
+    });
+    setStatus('套图完成 · '+((out.images||[]).length)+' 张');
+  };
+})();
 (function bindCanvas(){
   const stage = $('canvas');
   if (!stage) return;
