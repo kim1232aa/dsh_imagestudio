@@ -6,9 +6,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   addEdge,
+  addNode,
+  addVideoNode,
   defaultProject,
+  deleteEdge,
+  deleteNode,
   incoming,
+  incomingImagesInWireOrder,
   placeResultNode,
+  placeVideoResult,
   resolvePrompt,
 } from '../packages/ui/src/canvas-graph.ts'
 import { bootStudio } from '../packages/host/src/boot.ts'
@@ -57,6 +63,38 @@ describe('DOC03 canvas graph', () => {
     const img = next.nodes.find((n) => n.path === 'out.png')!
     assert.ok(img.x > cfg.x)
     assert.ok(next.edges.some((e) => e.from === cfg.id && e.to === img.id))
+  })
+
+  it('deleteNode drops touching edges', () => {
+    const p = deleteNode(defaultProject(), 'text-1')
+    assert.ok(!p.nodes.some((n) => n.id === 'text-1'))
+    assert.equal(p.edges.length, 0)
+  })
+
+  it('deleteEdge keeps nodes', () => {
+    const p = deleteEdge(defaultProject(), 'e-1')
+    assert.equal(p.edges.length, 0)
+    assert.equal(p.nodes.length, 2)
+  })
+
+  it('addVideoNode and placeVideoResult sit to the right', () => {
+    let p = addVideoNode(defaultProject(), { x: 40, y: 200 })
+    assert.ok(p.nodes.some((n) => n.type === 'video'))
+    const cfg = p.nodes.find((n) => n.type === 'config')!
+    p = placeVideoResult(p, cfg.id, { path: 'clip.mp4' })
+    const vid = p.nodes.find((n) => n.path === 'clip.mp4')!
+    assert.equal(vid.type, 'video')
+    assert.ok(vid.x > cfg.x)
+  })
+
+  it('incomingImagesInWireOrder follows edge order not node list', () => {
+    let p = defaultProject()
+    const cfg = p.nodes.find((n) => n.type === 'config')!
+    p = addNode(p, { id: 'img-b', type: 'image', x: 10, y: 40, path: 'b.png' })
+    p = addNode(p, { id: 'img-a', type: 'image', x: 10, y: 10, path: 'a.png' })
+    p = addEdge(p, 'img-a', cfg.id)
+    p = addEdge(p, 'img-b', cfg.id)
+    assert.deepEqual(incomingImagesInWireOrder(p, cfg.id), ['a.png', 'b.png'])
   })
 
   it('POST /imagestudio/api/canvas/generate adds an image node', async () => {

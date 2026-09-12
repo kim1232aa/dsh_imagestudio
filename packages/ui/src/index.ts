@@ -3,8 +3,10 @@
  * Serves /imagestudio workbench + JSON API on the official dsh webServer.
  * Original code — pattern inspired by DSH client chrome hooks, not VisioWork source.
  */
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, stat, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
@@ -13,7 +15,7 @@ import { runGenerateOnContext } from '../../core/src/pipeline.ts'
 import { JobStore } from '../../core/src/jobs.ts'
 import type { ImageRequest } from '../../core/src/types.ts'
 import { studioPage } from './studio-page.ts'
-import { defaultProject, placeResultNode, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
+import { defaultProject, placeResultNode, placeVideoResult, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
 import { buildEcomPlan, type EcomPlan } from './ecom-plan.ts'
 import { assertInsideWorkspace } from '../../assets/src/paths.ts'
 import { PathEscapeError } from '../../core/src/errors.ts'
@@ -34,13 +36,51 @@ type WebServer = {
   tapIndex?: (tap: (html: string) => string) => () => void
 }
 
-function readBody(req: import('node:http').IncomingMessage): Promise<string> {
+function readRaw(req: import('node:http').IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
+}
+
+function readBody(req: import('node:http').IncomingMessage): Promise<string> {
+  return readRaw(req).then((buf) => buf.toString('utf8'))
+}
+
+function pngSize(bytes: Buffer): { width: number; height: number } {
+  if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+  }
+  return { width: 0, height: 0 }
+}
+
+function parseMultipart(buf: Buffer, contentType: string): { bytes: Buffer; filename: string; mime: string } {
+  const bm = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)
+  const boundary = (bm?.[1] || bm?.[2] || '').trim()
+  if (!boundary) throw new Error('multipart boundary missing')
+  const sep = Buffer.from(`--${boundary}`)
+  let start = buf.indexOf(sep)
+  if (start < 0) throw new Error('no multipart body')
+  start += sep.length
+  if (buf[start] === 13 && buf[start + 1] === 10) start += 2
+  const next = buf.indexOf(sep, start)
+  const part = buf.subarray(start, next < 0 ? buf.length : next)
+  const splitAt = part.indexOf(Buffer.from('\r\n\r\n'))
+  if (splitAt < 0) throw new Error('malformed multipart')
+  const head = part.subarray(0, splitAt).toString('utf8')
+  let body = part.subarray(splitAt + 4)
+  if (body.length >= 2 && body[body.length - 2] === 13 && body[body.length - 1] === 10) {
+    body = body.subarray(0, body.length - 2)
+  }
+  const fn = /filename="([^"]+)"/i.exec(head)
+  const ct = /content-type:\s*([^\r\n]+)/i.exec(head)
+  return {
+    filename: fn?.[1] || 'upload.png',
+    mime: ct?.[1]?.trim() || 'application/octet-stream',
+    bytes: Buffer.from(body),
+  }
 }
 
 function send(res: import('node:http').ServerResponse, status: number, body: unknown, type = 'application/json; charset=utf-8') {
@@ -104,14 +144,20 @@ export function apply(ctx: Context): void {
           }
           if (url.pathname === '/imagestudio/api/assets' && (!req.method || req.method === 'GET')) {
             const index = await ctx.imageAssets.readIndex()
-            const images: Array<{ path: string; session: string; task: string }> = []
+            const images: Array<{ path: string; mime: string; title: string; session: string; task: string }> = []
             for (const [session, tasks] of Object.entries(index)) {
               for (const task of (tasks as string[]).slice(-8).reverse()) {
                 const dir = join(ctx.imageAssets.studioDir, session, task)
                 const files = await readdir(dir).catch(() => [])
-                for (const name of files.filter((n) => n.endsWith('.png'))) {
+                for (const name of files.filter((n) => n.endsWith('.png') || n.endsWith('.mp4'))) {
+                  const abs = join(dir, name)
+                  const st = await stat(abs).catch(() => null)
+                  if (!st || !st.isFile() || st.size <= 0) continue
+                  const mime = name.endsWith('.mp4') ? 'video/mp4' : 'image/png'
                   images.push({
                     path: join('.dsh/image-studio', session, task, name).replace(/\\/g, '/'),
+                    mime,
+                    title: name,
                     session,
                     task,
                   })
@@ -127,7 +173,7 @@ export function apply(ctx: Context): void {
               const abs = join(ctx.imageAssets.root, rel)
               assertInsideWorkspace(ctx.imageAssets.root, abs)
               const bytes = await readFile(abs)
-              const mime = rel.endsWith('.mp4') ? 'video/mp4' : rel.endsWith('.webm') ? 'video/webm' : 'image/png'
+              const mime = rel.endsWith('.mp4') ? 'video/mp4' : rel.endsWith('.webm') ? 'video/webm' : rel.endsWith('.gif') ? 'image/gif' : 'image/png'
               res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
               res.end(bytes)
             } catch (err) {
@@ -142,6 +188,40 @@ export function apply(ctx: Context): void {
           }
           if (url.pathname === '/imagestudio/api/canvas' && (!req.method || req.method === 'GET')) {
             send(res, 200, { project: defaultProject() })
+            return
+          }
+          if (req.method === 'POST' && url.pathname === '/imagestudio/api/upload') {
+            const rawBuf = await readRaw(req)
+            const headers = (req as { headers?: Record<string, string | string[] | undefined> }).headers ?? {}
+            const ctype = String(headers['content-type'] ?? headers['Content-Type'] ?? '')
+            let bytes = Buffer.alloc(0)
+            let filename = 'upload.png'
+            let mime = 'image/png'
+            if (ctype.includes('multipart/form-data')) {
+              const parsed = parseMultipart(rawBuf, ctype)
+              bytes = parsed.bytes
+              filename = parsed.filename
+              mime = parsed.mime || 'image/png'
+            } else {
+              const body = rawBuf.length ? JSON.parse(rawBuf.toString('utf8')) : {}
+              const b64 = String(body.data ?? body.bytes ?? '')
+              bytes = Buffer.from(b64, 'base64')
+              filename = String(body.filename ?? body.name ?? 'upload.png')
+              mime = String(body.mime ?? 'image/png')
+            }
+            filename = (filename.split(/[/\\]/).pop() || 'upload.png').replace(/[^a-zA-Z0-9._-]/g, '_')
+            if (!filename || filename.includes('..')) filename = 'upload.png'
+            if (!bytes.length) {
+              send(res, 400, { error: 'empty upload' })
+              return
+            }
+            const dim = pngSize(bytes)
+            const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), filename, bytes, {
+              width: dim.width,
+              height: dim.height,
+              mime,
+            })
+            send(res, 200, { path: ref.path, width: ref.width, height: ref.height, mime: ref.mime })
             return
           }
           if (req.method === 'POST' && url.pathname.startsWith('/imagestudio/api/')) {
@@ -168,13 +248,19 @@ export function apply(ctx: Context): void {
             if (url.pathname === '/imagestudio/api/generate') {
               const plan = body.planId ? ctx.imageSkills.plans.get(body.planId) : undefined
               const shot = plan && body.shotId ? plan.shots.find((s) => s.id === body.shotId) : plan?.shots[0]
+              const refs = (Array.isArray(body.assets) ? body.assets : Array.isArray(body.refImages) ? body.refImages : []).filter(
+                (p: unknown): p is string => typeof p === 'string' && !!p,
+              )
               const reqImg: ImageRequest = {
                 prompt: body.prompt || shot?.prompt || '',
                 negative: body.negative ?? shot?.negative,
                 aspectRatio: body.aspectRatio || shot?.aspectRatio || '1:1',
                 clarity: body.clarity,
                 n: body.n ?? 1,
-                refUsage: plan?.constraints.referenceImages.usage ?? 'analysis-only',
+                refUsage: refs.length ? 'image-to-image' : plan?.constraints.referenceImages.usage ?? 'analysis-only',
+                refImages: refs.length
+                  ? refs.map((path) => ({ path, width: 0, height: 0, mime: 'image/png', sha256: '' }))
+                  : undefined,
                 plan,
                 shotId: body.shotId,
               }
@@ -319,6 +405,95 @@ export function apply(ctx: Context): void {
               }
               return
             }
+            if (url.pathname === '/imagestudio/api/gif') {
+              const n = Math.max(2, Math.min(8, Number(body.n) || 4))
+              const durationSec = Math.max(1, Math.min(8, Number(body.durationSec) || 2))
+              const job = jobStore.create({ kind: 'image', prompt: body.prompt || 'gif' })
+              try {
+                const reqImg: ImageRequest = {
+                  prompt: body.prompt || 'gif',
+                  aspectRatio: body.aspectRatio || '1:1',
+                  n,
+                  refUsage: 'analysis-only',
+                }
+                const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
+                const images = (out as { images?: Array<{ path: string; width: number; height: number }> }).images || []
+                const absFrames = images.map((img) => join(ctx.imageAssets.root, img.path)).filter(Boolean)
+                if (absFrames.length < 2) throw new Error('need at least 2 frames for gif')
+                const dir = await mkdtemp(join(tmpdir(), 'dsh-gif-'))
+                const dest = join(dir, 'shot.gif')
+                try {
+                  for (let i = 0; i < absFrames.length; i++) {
+                    await writeFile(join(dir, `frame-${i}.png`), await readFile(absFrames[i]))
+                  }
+                  const rate = (absFrames.length / durationSec).toFixed(4)
+                  await runFfmpeg([
+                    '-y',
+                    '-framerate', rate,
+                    '-i', join(dir, 'frame-%d.png'),
+                    '-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+                    dest,
+                  ], job.controller.signal)
+                  const bytes = await readFile(dest)
+                  const taskId = randomUUID()
+                  const ref = await ctx.imageAssets.writeImage('studio', taskId, 'shot.gif', bytes, {
+                    width: images[0]?.width || 0,
+                    height: images[0]?.height || 0,
+                    mime: 'image/gif',
+                  })
+                  jobStore.finish(job.id, 'done')
+                  send(res, 200, {
+                    jobId: job.id,
+                    taskId,
+                    path: ref.path,
+                    url: ref.path,
+                    mime: 'image/gif',
+                    width: ref.width,
+                    height: ref.height,
+                    frames: absFrames.length,
+                    durationSec,
+                  })
+                } finally {
+                  await rm(dir, { recursive: true, force: true })
+                }
+              } catch (err) {
+                const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
+                send(res, aborted ? 200 : 500, { jobId: job.id, status: aborted ? 'canceled' : 'failed', error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/video/frame') {
+              const rel = String(body.path || '')
+              if (!rel) {
+                send(res, 400, { error: 'path required' })
+                return
+              }
+              try {
+                const abs = join(ctx.imageAssets.root, rel)
+                assertInsideWorkspace(ctx.imageAssets.root, abs)
+                const t = Math.max(0, Number(body.t) || 0)
+                const dir = await mkdtemp(join(tmpdir(), 'dsh-frame-'))
+                const dest = join(dir, 'frame.png')
+                try {
+                  await runFfmpeg(['-y', '-ss', String(t), '-i', abs, '-frames:v', '1', dest])
+                  const bytes = await readFile(dest)
+                  const dim = pngSize(bytes)
+                  const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), 'frame.png', bytes, {
+                    width: dim.width,
+                    height: dim.height,
+                    mime: 'image/png',
+                  })
+                  send(res, 200, { path: ref.path, width: ref.width, height: ref.height, mime: 'image/png', t })
+                } finally {
+                  await rm(dir, { recursive: true, force: true })
+                }
+              } catch (err) {
+                const status = err instanceof PathEscapeError ? 403 : 500
+                send(res, status, { error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
             if (url.pathname === '/imagestudio/api/cancel') {
               const id = body.jobId || body.id
               if (!id) {
@@ -379,6 +554,16 @@ export function apply(ctx: Context): void {
       },
     })
 
+    const faviconSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="#e8e4d4"/></svg>'
+    const disposeFav = web.register({
+      kind: 'exact',
+      path: '/favicon.ico',
+      handler: async (_req, res) => {
+        send(res, 200, faviconSvg, 'image/svg+xml; charset=utf-8')
+      },
+    })
+
     const scriptTag = '<script src="/imagestudio/entry.js" defer></script>'
     let disposeTap: (() => void) | undefined
     if (typeof web.tapIndex === 'function') {
@@ -408,6 +593,7 @@ export function apply(ctx: Context): void {
     ctx.effect(() => {
       return () => {
         disposePage()
+        disposeFav()
         disposeTap?.()
         disposeInject?.()
         disposeSlot?.()
@@ -420,6 +606,39 @@ export function apply(ctx: Context): void {
   } else {
     attach(ctx)
   }
+}
+
+function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const child = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args])
+    const errChunks: Buffer[] = []
+    child.stderr?.on('data', (c: Buffer) => errChunks.push(c))
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      signal?.removeEventListener('abort', onAbort)
+      if (err) reject(err)
+      else resolve()
+    }
+    const onAbort = () => {
+      child.kill('SIGKILL')
+      finish(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+    }
+    if (signal?.aborted) {
+      onAbort()
+      return
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    child.on('error', (err) => finish(err))
+    child.on('exit', (code) => {
+      if (code === 0) finish()
+      else {
+        const msg = Buffer.concat(errChunks).toString('utf8').trim()
+        finish(new Error(`ffmpeg exited ${code}${msg ? `: ${msg}` : ''}`))
+      }
+    })
+  })
 }
 
 export default { name, inject, Config, apply }

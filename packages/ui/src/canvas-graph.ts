@@ -74,9 +74,73 @@ export function placeResultNode(
   const node: CanvasNode = {
     id,
     type: 'image',
-    x: (cfg?.x ?? 320) + 240,
+    x: (cfg?.x ?? 320) + 340,
     y: cfg?.y ?? 90,
     path: image.path,
+  }
+  return {
+    ...project,
+    nodes: [...project.nodes, node],
+    edges: [...project.edges, { id: `e-${id}`, from: configId, to: id }],
+  }
+}
+
+export function incomingImagesInWireOrder(project: CanvasProject, configId: string): string[] {
+  return incoming(project, configId)
+    .filter((n) => (n.type === 'image' || n.type === 'video') && n.path)
+    .map((n) => n.path as string)
+}
+
+export function addNode(
+  project: CanvasProject,
+  node: Partial<CanvasNode> & { type: CanvasNodeType },
+): CanvasProject {
+  const id = node.id || `${node.type}-${Date.now()}`
+  const next: CanvasNode = {
+    id,
+    type: node.type,
+    x: node.x ?? 80,
+    y: node.y ?? 160,
+    text: node.text,
+    path: node.path,
+    ratio: node.ratio,
+    n: node.n,
+  }
+  return { ...project, nodes: [...project.nodes, next] }
+}
+
+export function deleteNode(project: CanvasProject, id: string): CanvasProject {
+  return {
+    ...project,
+    nodes: project.nodes.filter((n) => n.id !== id),
+    edges: project.edges.filter((e) => e.from !== id && e.to !== id),
+  }
+}
+
+export function deleteEdge(project: CanvasProject, edgeId: string): CanvasProject {
+  return { ...project, edges: project.edges.filter((e) => e.id !== edgeId) }
+}
+
+export function addVideoNode(
+  project: CanvasProject,
+  opts: { x?: number; y?: number; path?: string } = {},
+): CanvasProject {
+  return addNode(project, { type: 'video', x: opts.x ?? 320, y: opts.y ?? 220, path: opts.path })
+}
+
+export function placeVideoResult(
+  project: CanvasProject,
+  configId: string,
+  video: { path: string },
+): CanvasProject {
+  const cfg = project.nodes.find((n) => n.id === configId)
+  const id = `vid-${Date.now()}`
+  const node: CanvasNode = {
+    id,
+    type: 'video',
+    x: (cfg?.x ?? 320) + 340,
+    y: cfg?.y ?? 90,
+    path: video.path,
   }
   return {
     ...project,

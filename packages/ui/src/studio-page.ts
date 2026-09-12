@@ -7,6 +7,7 @@ export function studioPage(opts: { embed?: boolean }): string {
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Image Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2312110e'/%3E%3Crect x='6' y='10' width='20' height='12' rx='2' fill='%23e8e4d4'/%3E%3C/svg%3E"/>
 <style>
 :root{--bg:#12110e;--panel:#1b1a16;--ink:#efece3;--muted:#9a9486;--line:rgba(255,255,255,.08);--accent:#e8e4d4;--warn:#c45c26}
 *{box-sizing:border-box}
@@ -37,11 +38,13 @@ button.primary:disabled{opacity:.5}
 .skill{text-align:left;width:100%;background:#14130f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;color:inherit}
 .skill[data-on]{border-color:var(--accent)}
 .skill small{display:block;color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:16px}
 .card{background:#181712;border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.card img{width:100%;display:block;background:#0a0908;max-height:280px;object-fit:contain}
+.card img,.card video{width:100%;display:block;background:#0a0908;max-height:220px;object-fit:contain}
 .card .cap{padding:10px 12px 4px;color:var(--ink);font-size:13px}
 .card .cap small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.ecom-use{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:inherit}
+.ecom-use input[type=number]{width:48px;margin:0}
 .banner{margin:0 0 12px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:12px}
 .banner b{color:var(--ink);font-weight:600}
 .note{color:var(--muted);font-size:12px}
@@ -49,14 +52,30 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 .hist{display:flex;flex-direction:column;gap:8px}
 .hist button{text-align:left;background:#14130f;border:1px solid var(--line);border-radius:8px;padding:8px;color:inherit;cursor:pointer}
 .canvas{position:relative;flex:1;background:#0d0c0a;overflow:hidden}
-.node{position:absolute;background:#1b1a16;border:1px solid var(--line);border-radius:10px;padding:10px;min-width:160px}
+.node{position:absolute;background:#1b1a16;border:1px solid var(--line);border-radius:10px;padding:10px;min-width:220px;width:auto;max-width:280px;cursor:grab}
+.node .note{white-space:nowrap;margin:4px 0 0}
+.empty{padding:24px;color:var(--muted)}
 .empty{padding:24px;color:var(--muted)}
 .score{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px}
 .acts{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px}
 .acts button{font-size:12px}
 .progress{margin:10px 0;color:var(--muted)}
-.node{cursor:grab;width:180px}.port{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--accent);top:24px}.port.in{left:-6px}.port.out{right:-6px}
+.port{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--accent);top:24px}
+.port.in{left:-6px}
+.port.out{right:-6px}
 header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.lb{position:fixed;inset:0;background:rgba(8,8,9,.92);display:none;align-items:center;justify-content:center;z-index:80;flex-direction:column;gap:10px}
+.lb[data-on]{display:flex}
+.lb .stage{max-width:92vw;max-height:82vh;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.lb img,.lb video{max-width:92vw;max-height:82vh;transform-origin:center center}
+.dropzone{margin-top:8px;padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center}
+.dropzone[data-over]{border-color:var(--accent);color:var(--ink);background:rgba(232,228,212,.06)}
+.ctx{position:fixed;z-index:40;background:#1b1a16;border:1px solid var(--line);border-radius:8px;padding:4px;min-width:148px;box-shadow:0 8px 28px rgba(0,0,0,.45)}
+.ctx button{display:block;width:100%;text-align:left;background:transparent;border:0;color:inherit;padding:7px 10px;cursor:pointer;font:inherit}
+.ctx button:hover{background:rgba(255,255,255,.06)}
+#histSearch{margin:0 0 8px}
+.ecom-use span{white-space:nowrap}
+#cvWorld{position:absolute;left:0;top:0;transform-origin:0 0}
 </style>
 </head>
 <body>
@@ -78,10 +97,11 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
   <div class="cols" id="cols">
     <aside>
       <label>历史记录</label>
+      <input id="histSearch" placeholder="搜索提示词 / 比例"/>
       <div class="hist" id="hist"><p class="note">还没有记录。生成后会出现在这里。</p></div>
       <label>创作 Skill</label>
       <div id="skills"></div>
-      <p class="note">作者 FANTASY 梵想美学。clone 到 skills/ 即可出现。不选就是普通生图。</p>
+      <p class="note">把 skill 目录放到插件 skills/ 后会出现。不选就是普通生图。</p>
     </aside>
     <main class="stage">
       <p class="banner" id="channelHint"><b>当前是 mock 预览渠道</b> · 出的是概念板，不是成片。到插件设置填真实模型地址和密钥后才会出照片。</p>
@@ -94,10 +114,20 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
       </div>
       <label>想法 / 提示词</label>
       <textarea id="brief" placeholder="例：明代科举舞弊案，夜审、账房、放榜。"></textarea>
+      <div id="refWrap" hidden>
+        <label>参考图（图生图，可多选）</label>
+        <input id="refFile" type="file" accept="image/*" multiple/>
+        <div class="dropzone" id="refDrop">拖到这里，或 Ctrl+V 粘贴截图。上限 10MB。</div>
+        <div class="row" id="refThumbs"></div>
+      </div>
       <label>比例（【必须】九档固定顺序）</label>
       <div class="row" id="ratios"></div>
       <label>清晰度</label>
       <div class="row" id="clarity"></div>
+      <div id="vidOpts" hidden>
+        <label>时长（秒）</label>
+        <div class="row" id="durations"></div>
+      </div>
       <label>张数</label>
       <div class="row" id="counts"></div>
       <label>负面词（skill 自动带上，可删）</label>
@@ -141,8 +171,11 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
     <div class="row" style="padding:8px 12px;border-bottom:1px solid var(--line)">
       <button class="ghost" id="cvText">文本</button>
       <button class="ghost" id="cvCfg">配置</button>
+      <button class="ghost" id="cvImg">图片</button>
+      <button class="ghost" id="cvVid">视频</button>
       <button class="ghost" id="cvSend">发送出图</button>
-      <span class="note" id="cvHint">开箱已连好文本→配置。从节点右侧圆点拖到另一节点左侧圆点连线。</span>
+      <button class="ghost" id="cvDel">删除</button>
+      <span class="note" id="cvHint">开箱已连好文本→配置。滚轮缩放，空格拖动画布，右键菜单，Delete 删除。</span>
     </div>
     <div class="canvas" id="canvas"></div>
   </div>
@@ -166,6 +199,11 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
   </div>
 </section>
 
+<div class="lb" id="lb">
+  <div class="stage"><img id="lbImg" alt="" style="display:none"/><video id="lbVid" controls playsinline style="display:none;background:#000;max-width:92vw;max-height:82vh"></video></div>
+  <p class="note" id="lbCap">滚轮缩放 0.5x–3x · ← → 翻页 · Esc 关闭</p>
+</div>
+
 <script>
 const RATIOS = ['自动','1:1','3:4','4:3','9:16','16:9','2:3','3:2','21:9'];
 const CLARITY = ['自动','1K','2K','4K'];
@@ -178,10 +216,20 @@ const SKILL_UI = [
   {id:'photography-simulation', name:'摄影', hint:'任意地点拍照感'},
   {id:'character-casting', name:'角色', hint:'默认同人设一张，勾选才出三视图'}
 ];
-const state = { page:'gen', mode:'txt', skillId:'', ratio:'自动', clarity:'自动', n:1, plan:null, lastImages:[], gallery:[], chat:false };
+const DURATIONS = [2,4,6];
+const MAX_UPLOAD = 10 * 1024 * 1024;
+const state = { page:'gen', mode:'txt', skillId:'', ratio:'自动', clarity:'自动', n:1, durationSec:2, plan:null, lastImages:[], gallery:[], history:[], chat:false, lbScale:1, lbIndex:0, lbList:[] };
 
 const $ = (id) => document.getElementById(id);
 function setStatus(t){ $('status').textContent = t; }
+function loadLS(key, fallback){
+  try { const v = JSON.parse(localStorage.getItem('imagestudio.'+key)||''); return v || fallback; } catch { return fallback; }
+}
+function saveLS(key, val){
+  try { localStorage.setItem('imagestudio.'+key, JSON.stringify(val)); } catch {}
+}
+state.gallery = loadLS('gallery', []);
+state.history = loadLS('history', []);
 async function api(path, body, signal){
   const res = await fetch('/imagestudio/api'+path, {
     method: body===undefined?'GET':'POST',
@@ -239,8 +287,14 @@ function sync(){
   chips($('ratios'), RATIOS, 'ratio');
   chips($('clarity'), CLARITY, 'clarity');
   chips($('counts'), COUNTS, 'n');
+  if ($('durations')) chips($('durations'), DURATIONS, 'durationSec');
   $('cols').classList.toggle('chat-open', state.chat);
   $('go').disabled = false;
+  if ($('refWrap')) $('refWrap').hidden = state.mode!=='img';
+  if ($('vidOpts')) {
+    $('vidOpts').hidden = state.mode!=='video';
+    $('vidOpts').style.display = state.mode==='video' ? 'block' : 'none';
+  }
 }
 function showPlan(plan){
   const box = $('scoreBox');
@@ -262,8 +316,9 @@ function fileSrc(img){
   return img.path ? '/imagestudio/api/file?path='+encodeURIComponent(img.path) : (img.url||'');
 }
 function prettyName(img){
-  const raw = String(img.path||img.role||'shot.png');
-  return raw.split('/').pop();
+  if (img && img.mime && String(img.mime).startsWith('video')) return '视频';
+  if (img && img.title) return img.title;
+  return '概念板';
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -273,10 +328,19 @@ function renderGallery(){
   if (!box) return;
   box.innerHTML = '';
   (state.gallery||[]).forEach(img=>{
+    if (!img || !img.path) return;
     const d = document.createElement('div');
     d.className = 'card';
     const src = fileSrc(img);
-    d.innerHTML = (src?'<img src="'+src+'" alt="">':'') + '<div class="cap">画廊<small>'+prettyName(img)+'</small></div>';
+    const isVid = img.mime && String(img.mime).startsWith('video');
+    d.innerHTML = (src ? (isVid ? '<video src="'+src+'" muted></video>' : '<img src="'+src+'" alt="">') : '')
+      + '<div class="cap">'+(escapeHtml(img.prompt||img.title||prettyName(img)))+'<small>'+prettyName(img)+'</small></div>';
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    acts.append(mkAct('当参考图', () => { state.lastImages = img.path?[img.path]:[]; state.mode='img'; state.page='gen'; sync(); setStatus('已设为参考图'); }));
+    acts.append(mkAct('拿去做视频', () => { state.lastImages = img.path?[img.path]:[]; state.mode='video'; state.page='gen'; sync(); setStatus('已带到视频首帧'); }));
+    acts.append(mkAct('加入画布', () => { state.page='canvas'; sync(); window.__cvAddImage && window.__cvAddImage(img.path); }));
+    d.append(acts);
     box.append(d);
   });
 }
@@ -284,48 +348,108 @@ function addGallery(img){
   state.gallery = state.gallery || [];
   if (img.path && state.gallery.some(x=>x.path===img.path)) { setStatus('画廊已有这张（按路径去重）'); return; }
   state.gallery.push(img);
+  saveLS('gallery', state.gallery);
   renderGallery();
   setStatus('已加入画廊 · '+state.gallery.length+' 张');
 }
+function mkAct(label, fn){
+  const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.onclick=fn; return b;
+}
+function pushHistory(entry){
+  state.history = state.history || [];
+  state.history.unshift(entry);
+  state.history = state.history.slice(0, 80);
+  saveLS('history', state.history);
+  renderHist();
+}
+function renderHist(){
+  const box = $('hist');
+  if (!box) return;
+  const q = (($('histSearch')&&$('histSearch').value)||'').trim().toLowerCase();
+  const items = (state.history||[]).filter(h => {
+    if (!q) return true;
+    return (h.prompt||'').toLowerCase().includes(q) || String(h.ratio||'').includes(q) || String(h.skillId||'').includes(q);
+  });
+  box.innerHTML = items.length ? '' : '<p class="note">'+(q?'没有匹配的历史。':'还没有记录。生成后会出现在这里。')+'</p>';
+  items.forEach(h => {
+    const b = document.createElement('button');
+    b.textContent = (h.prompt||prettyName(h)).slice(0,18) + (h.ratio? ' · '+h.ratio : '');
+    b.onclick = () => {
+      if (h.prompt) $('brief').value = h.prompt;
+      if (h.ratio) state.ratio = h.ratio;
+      if (h.clarity) state.clarity = h.clarity;
+      if (h.n) state.n = h.n;
+      if (h.skillId!==undefined) state.skillId = h.skillId;
+      if (h.mode) state.mode = h.mode;
+      if (h.path) state.lastImages = [h.path];
+      if (h.negative && $('negative')) $('negative').value = h.negative;
+      state.page = 'gen';
+      sync();
+      setStatus('已回填参数');
+    };
+    box.append(b);
+  });
+}
+function openLb(list, idx){
+  state.lbList = list || [];
+  state.lbIndex = idx || 0;
+  state.lbScale = 1;
+  paintLb();
+  $('lb').dataset.on = '1';
+}
+function paintLb(){
+  const item = (state.lbList||[])[state.lbIndex];
+  if (!item) return;
+  const src = fileSrc(item);
+  const isVid = item.mime && String(item.mime).startsWith('video');
+  $('lbImg').style.display = isVid ? 'none' : 'block';
+  $('lbVid').style.display = isVid ? 'block' : 'none';
+  if (isVid) { $('lbVid').src = src; $('lbVid').play && $('lbVid').play().catch(()=>{}); $('lbImg').removeAttribute('src'); }
+  else { $('lbImg').src = src; $('lbVid').removeAttribute('src'); }
+  const el = isVid ? $('lbVid') : $('lbImg');
+  el.style.transform = 'scale('+state.lbScale+')';
+  $('lbCap').textContent = (state.lbIndex+1)+'/'+state.lbList.length+' · '+state.lbScale.toFixed(1)+'x · 滚轮缩放 · ← → · Esc';
+}
+function closeLb(){ $('lb').removeAttribute('data-on'); }
 function cards(images, prompt){
   const box = $('out');
   (images||[]).forEach(img=>{
     const d = document.createElement('div');
     d.className = 'card';
     const src = fileSrc(img);
-    d.innerHTML = (src?'<img src="'+src+'" alt="">':'')
-      + '<div class="cap">'+(escapeHtml((prompt||'').slice(0,48))||'预览')+'<small>mock 概念板 · '+prettyName(img)+'</small></div>';
+    const isVid = img.mime && String(img.mime).startsWith('video');
+    const isGif = img.mime === 'image/gif' || (img.path||'').endsWith('.gif');
+    d.innerHTML = (src ? (isVid ? '<video src="'+src+'" controls style="width:100%;display:block;background:#000"></video>' : '<img src="'+src+'" alt="">') : '')
+      + '<div class="cap">'+(escapeHtml((prompt||'').slice(0,48))||'预览')+'<small>'+(isVid?('mock 视频 · '+(img.width||'')+'×'+(img.height||'')):isGif?'GIF':'mock 概念板')+'</small></div>';
     const acts = document.createElement('div');
     acts.className = 'acts';
-    const mk = (label, fn) => { const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.onclick=fn; return b; };
-    acts.append(mk('下载', () => { const a=document.createElement('a'); a.href=src; a.download=(img.path||'shot').split('/').pop(); a.click(); }));
-    acts.append(mk('加入画廊', () => addGallery(img)));
-    acts.append(mk('当参考图', () => { state.lastImages = img.path?[img.path]:[]; state.mode='img'; sync(); setStatus('已设为参考图'); }));
-    acts.append(mk('拿去做视频', () => { state.lastImages = img.path?[img.path]:[]; state.mode='video'; sync(); setStatus('已带到视频首帧'); }));
-    acts.append(mk('复制提示词', () => { navigator.clipboard && navigator.clipboard.writeText(prompt||$('brief').value); setStatus('提示词已复制'); }));
-    acts.append(mk('重新生成', () => { $('go').click(); }));
+    acts.append(mkAct('全屏', () => openLb(images, images.indexOf(img))));
+    acts.append(mkAct('下载', () => { const a=document.createElement('a'); a.href=src; a.download=(img.path||'shot').split('/').pop(); a.click(); }));
+    acts.append(mkAct('加入画廊', () => addGallery({ ...img, prompt })));
+    acts.append(mkAct('当参考图', () => { state.lastImages = img.path?[img.path]:[]; state.mode='img'; sync(); setStatus('已设为参考图'); }));
+    acts.append(mkAct('拿去做视频', () => { state.lastImages = img.path?[img.path]:[]; state.mode='video'; sync(); setStatus('已带到视频首帧'); }));
+    acts.append(mkAct('加入对话', () => { $('chat').value = (($('chat').value||'') + String.fromCharCode(10) + (prompt||'')).trim(); state.chat = true; sync(); setStatus('已加入对话'); }));
+    acts.append(mkAct('复制提示词', () => { navigator.clipboard && navigator.clipboard.writeText(prompt||$('brief').value); setStatus('提示词已复制'); }));
+    acts.append(mkAct('重新生成', () => { $('go').click(); }));
+    if (isVid) acts.append(mkAct('抽一帧', async () => {
+      setStatus('抽帧中…');
+      const out = await api('/video/frame', { path: img.path, t: 0.4 });
+      if (out.error) { setStatus(String(out.error)); return; }
+      cards([out], prompt+' · 抽帧');
+      setStatus('已抽一帧，可当参考图');
+    }));
     d.append(acts);
     box.prepend(d);
-    const h = document.createElement('button');
-    h.textContent = (prompt||'').slice(0,18) || prettyName(img);
-    h.onclick = () => {
-      if (img.path) state.lastImages = [img.path];
-      if (prompt) $('brief').value = prompt;
-    };
-    if ($('hist').querySelector('p')) $('hist').innerHTML = '';
-    $('hist').prepend(h);
+    pushHistory({
+      prompt, path: img.path, mime: img.mime, ratio: state.ratio, clarity: state.clarity, n: state.n,
+      skillId: state.skillId, mode: state.mode, negative: $('negative') && $('negative').value
+    });
   });
 }
 async function loadGalleryFromAssets(){
-  try {
-    const data = await api('/assets');
-    const imgs = data.images || [];
-    const seen = new Set((state.gallery||[]).map(x=>x.path));
-    imgs.forEach(img => { if (img.path && !seen.has(img.path)) state.gallery.push(img); });
-    renderGallery();
-    const empty = $('galEmpty');
-    if (empty) empty.style.display = state.gallery.length ? 'none' : 'block';
-  } catch {}
+  renderGallery();
+  const empty = $('galEmpty');
+  if (empty) empty.style.display = state.gallery.length ? 'none' : 'block';
 }
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   state.page=b.dataset.page;
@@ -333,6 +457,72 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if (state.page==='gallery') loadGalleryFromAssets();
 });
 document.querySelectorAll('#modes .chip').forEach(b=>b.onclick=()=>{ state.mode=b.dataset.mode; sync(); });
+$('refFile') && ($('refFile').onchange = async () => {
+  await ingestFiles(Array.from($('refFile').files||[]));
+});
+async function ingestFiles(files){
+  const thumbs = $('refThumbs');
+  for (const f of files) {
+    if (f.size > MAX_UPLOAD) { setStatus('超过大小限制 10MB：'+f.name); continue; }
+    if (!String(f.type||'').startsWith('image/')) { setStatus('只接受图片：'+f.name); continue; }
+    const buf = new Uint8Array(await f.arrayBuffer());
+    let b64 = '';
+    const chunk = 0x8000;
+    for (let i=0;i<buf.length;i+=chunk) b64 += String.fromCharCode.apply(null, buf.subarray(i,i+chunk));
+    const out = await api('/upload', { filename: f.name, mime: f.type || 'image/png', data: btoa(b64) });
+    if (out.path) {
+      state.lastImages = (state.lastImages||[]).concat([out.path]);
+      if (thumbs) {
+        const im = document.createElement('img');
+        im.src = fileSrc(out);
+        im.style.width = '72px';
+        im.style.height = '72px';
+        im.style.objectFit = 'cover';
+        im.style.borderRadius = '8px';
+        thumbs.append(im);
+      }
+    }
+  }
+  if (files.length) setStatus('已上传参考图 · '+state.lastImages.length+' 张');
+}
+(function bindDrop(){
+  const z = $('refDrop');
+  if (!z) return;
+  const over = (on) => z.toggleAttribute('data-over', on);
+  z.addEventListener('dragover', ev => { ev.preventDefault(); over(true); });
+  z.addEventListener('dragleave', () => over(false));
+  z.addEventListener('drop', async ev => {
+    ev.preventDefault(); over(false);
+    state.mode = 'img'; sync();
+    await ingestFiles(Array.from(ev.dataTransfer.files||[]));
+  });
+})();
+document.addEventListener('paste', async (ev) => {
+  const items = Array.from((ev.clipboardData && ev.clipboardData.items) || []);
+  const files = items.map(it => it.kind==='file' ? it.getAsFile() : null).filter(Boolean);
+  if (!files.length) return;
+  if (state.page==='canvas' && window.__cvAddFile) {
+    files.forEach(f => window.__cvAddFile(f));
+    return;
+  }
+  state.mode = 'img'; state.page='gen'; sync();
+  await ingestFiles(files);
+});
+$('histSearch') && ($('histSearch').oninput = renderHist);
+$('lb') && ($('lb').onclick = (ev) => { if (ev.target===$('lb') || ev.target.className==='stage') closeLb(); });
+document.addEventListener('keydown', (ev) => {
+  if (!$('lb').hasAttribute('data-on')) return;
+  if (ev.key==='Escape') closeLb();
+  if (ev.key==='ArrowLeft') { state.lbIndex = Math.max(0, state.lbIndex-1); paintLb(); }
+  if (ev.key==='ArrowRight') { state.lbIndex = Math.min(state.lbList.length-1, state.lbIndex+1); paintLb(); }
+});
+$('lb') && $('lb').addEventListener('wheel', (ev) => {
+  if (!$('lb').hasAttribute('data-on')) return;
+  ev.preventDefault();
+  const next = state.lbScale + (ev.deltaY>0 ? -0.1 : 0.1);
+  state.lbScale = Math.max(0.5, Math.min(3, Math.round(next*10)/10));
+  paintLb();
+}, { passive:false });
 document.querySelectorAll('#insp .chip').forEach(b=>b.onclick=()=>{ $('brief').value=b.dataset.brief||''; });
 $('toggleChat').onclick=()=>{ state.chat=!state.chat; sync(); };
 async function think(){
@@ -358,7 +548,18 @@ $('go').onclick = async () => {
     return;
   }
   if (state.mode==='gif') {
-    setStatus('GIF 走本地编码，先出多帧');
+    if (!brief) { setStatus('先写提示词'); return; }
+    const t0g = Date.now();
+    const tickg = setInterval(() => setStatus('GIF 编码中… '+Math.round((Date.now()-t0g)/1000)+'s'), 200);
+    try {
+      const ratio = state.ratio==='自动' ? '1:1' : state.ratio;
+      const out = await api('/gif', { prompt: brief, n: Math.max(2, state.n), aspectRatio: ratio, durationSec: 2 });
+      if (out.error) { setStatus(String(out.error)); return; }
+      cards([out], brief);
+      setStatus('完成 · '+Math.round((Date.now()-t0g)/1000)+'s');
+    } catch (e) {
+      setStatus('失败：'+String(e));
+    } finally { clearInterval(tickg); }
     return;
   }
   if (state.mode==='video') {
@@ -370,25 +571,12 @@ $('go').onclick = async () => {
     try {
       const out = await api('/video', {
         prompt: brief,
-        durationSec: state.n === 1 ? 2 : state.n === 2 ? 4 : 6,
+        durationSec: state.durationSec || 2,
         aspectRatio: state.ratio==='自动' ? '16:9' : state.ratio,
         firstFramePath: state.lastImages[0]
       });
       if (out.error) { setStatus(String(out.error)); return; }
-      const box = $('out');
-      const d = document.createElement('div');
-      d.className = 'card';
-      const src = '/imagestudio/api/file?path='+encodeURIComponent(out.path||'');
-      d.innerHTML = '<video controls src="'+src+'" style="width:100%;display:block;background:#000"></video>'
-        + '<div class="cap">'+(escapeHtml(brief).slice(0,48))+'<small>mock 视频 · '+out.width+'×'+out.height+' · '+out.durationSec+'s · 模型 '+escapeHtml(out.model||'mock')+'</small></div>';
-      const acts = document.createElement('div');
-      acts.className = 'acts';
-      const mk = (label, fn) => { const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.onclick=fn; return b; };
-      acts.append(mk('下载', () => { const a=document.createElement('a'); a.href=src; a.download='clip.mp4'; a.click(); }));
-      acts.append(mk('加入画廊', () => addGallery({ path: out.path, mime:'video/mp4' })));
-      acts.append(mk('重新生成', () => { $('go').click(); }));
-      d.append(acts);
-      box.prepend(d);
+      cards([{ path: out.path, mime:'video/mp4', width: out.width, height: out.height, title:'视频' }], brief);
       setStatus('完成 · '+Math.round((Date.now()-t0v)/1000)+'s');
     } catch (e) {
       setStatus('失败：'+String(e));
@@ -421,17 +609,17 @@ $('go').onclick = async () => {
     aspectRatio: ratio,
     n: state.n,
     skillId,
-    negative: $('negative').value.trim() || undefined
+    negative: $('negative').value.trim() || undefined,
+    assets: state.lastImages || [],
+    refUsage: (state.lastImages && state.lastImages.length) ? 'image-to-image' : 'analysis-only'
   }, ac.signal);
   state.lastJobId = out.jobId;
   if (out.status === 'canceled') { setStatus('已取消'); return; }
   if (out.error) { setStatus(String(out.error)); return; }
   cards(out.images||[], brief);
-  (out.images||[]).forEach(img => addGallery(img));
   if (skillId==='cinema-dna-21x9x3' && (out.images||[]).length>=2) {
     const composed = await api('/compose', { mode:'triptych', assets:(out.images||[]).map(i=>i.path).slice(0,3), gap:10, ratios:'1:1:1' });
     cards(composed.images||[], brief);
-    (composed.images||[]).forEach(img => addGallery(img));
   }
   setStatus('完成 · '+Math.round((Date.now()-t0)/1000)+'s');
   } catch (e) {
@@ -473,11 +661,9 @@ $('enhance') && ($('enhance').onclick = () => {
   if (!box) return;
   uses.forEach(u => {
     const lab = document.createElement('label');
-    lab.style.display = 'flex';
-    lab.style.alignItems = 'center';
-    lab.style.gap = '6px';
-    lab.innerHTML = '<input type="checkbox" checked data-id="'+u.id+'"/> '+u.name
-      +' <input type="number" min="1" max="4" value="'+u.n+'" data-n="'+u.id+'" style="width:52px"/>';
+    lab.className = 'ecom-use';
+    lab.innerHTML = '<input type="checkbox" checked data-id="'+u.id+'"/> <span>'+u.name+'</span>'
+      +' <input type="number" min="1" max="4" value="'+u.n+'" data-n="'+u.id+'"/>';
     box.append(lab);
   });
   let plan = null;
@@ -520,7 +706,8 @@ $('enhance') && ($('enhance').onclick = () => {
 (function bindCanvas(){
   const stage = $('canvas');
   if (!stage) return;
-  const project = {
+  const saved = loadLS('canvas', null);
+  const project = saved && saved.nodes ? saved : {
     id:'default',
     nodes:[
       {id:'text-1', type:'text', x:40, y:80, text:'一只青瓷茶盏放在账房窗台上，午后侧光'},
@@ -529,10 +716,57 @@ $('enhance') && ($('enhance').onclick = () => {
     edges:[{id:'e-1', from:'text-1', to:'cfg-1'}]
   };
   state.canvas = project;
-  let drag = null, wire = null, selected = 'cfg-1';
+  let drag = null, wire = null, selected = 'cfg-1', pan = null, space = false, ctxMenu = null;
+  const view = { x:0, y:0, scale:1 };
+  function persist(){ saveLS('canvas', project); }
   function incoming(id){ return project.edges.filter(e=>e.to===id).map(e=>project.nodes.find(n=>n.id===e.from)).filter(Boolean); }
+  function hideCtx(){ if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; } }
+  function showCtx(x, y){
+    hideCtx();
+    ctxMenu = document.createElement('div');
+    ctxMenu.className = 'ctx';
+    ctxMenu.style.left = x+'px';
+    ctxMenu.style.top = y+'px';
+    const item = (label, fn) => { const b=document.createElement('button'); b.textContent=label; b.onclick=()=>{ fn(); hideCtx(); }; return b; };
+    ctxMenu.append(
+      item('文本节点', () => addNode('text', x, y)),
+      item('配置节点', () => addNode('config', x, y)),
+      item('图片节点', () => addNode('image', x, y)),
+      item('视频节点', () => addNode('video', x, y)),
+      item('删除选中', () => delSelected()),
+    );
+    document.body.append(ctxMenu);
+  }
+  function worldFromEvent(ev){
+    const r = stage.getBoundingClientRect();
+    return { x: (ev.clientX - r.left - view.x) / view.scale, y: (ev.clientY - r.top - view.y) / view.scale };
+  }
+  function addNode(type, x, y){
+    const id = type+'-'+Date.now();
+    const n = { id, type, x: x || 80, y: y || 180, text: type==='text'?'':'', ratio: type==='config'?'1:1':undefined, n: type==='config'?1:undefined };
+    project.nodes.push(n);
+    selected = id;
+    persist(); render();
+  }
+  function delSelected(){
+    if (!selected) return;
+    project.nodes = project.nodes.filter(n=>n.id!==selected);
+    project.edges = project.edges.filter(e=>e.from!==selected && e.to!==selected);
+    selected = (project.nodes[0]&&project.nodes[0].id) || '';
+    persist(); render();
+  }
+  function applyView(){
+    const w = $('cvWorld');
+    if (w) w.style.transform = 'translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+  }
   function render(){
-    stage.innerHTML = '<svg id="cvWires" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>';
+    hideCtx();
+    stage.innerHTML = '';
+    const world = document.createElement('div');
+    world.id = 'cvWorld';
+    world.innerHTML = '<svg id="cvWires" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none" width="4000" height="3000"></svg>';
+    stage.append(world);
+    applyView();
     project.nodes.forEach(n=>{
       const el = document.createElement('div');
       el.className = 'node';
@@ -545,9 +779,12 @@ $('enhance') && ($('enhance').onclick = () => {
         el.innerHTML = '<b>文本</b><textarea data-field="text" style="min-height:64px;margin-top:6px">'+escapeHtml(n.text||'')+'</textarea>';
       } else if (n.type==='image'){
         const src = n.path ? '/imagestudio/api/file?path='+encodeURIComponent(n.path) : '';
-        el.innerHTML = '<b>图片</b>'+(src?'<img src="'+src+'" alt="" style="width:160px;display:block;margin-top:6px">':'')+'<small>'+escapeHtml((n.path||'').split('/').pop())+'</small>';
+        el.innerHTML = '<b>图片</b>'+(src?'<img src="'+src+'" alt="" style="width:160px;display:block;margin-top:6px">':'<div class="note">空节点 · 点上传或拖入</div>');
+      } else if (n.type==='video'){
+        const src = n.path ? '/imagestudio/api/file?path='+encodeURIComponent(n.path) : '';
+        el.innerHTML = '<b>视频</b>'+(src?'<video src="'+src+'" muted style="width:160px;display:block;margin-top:6px"></video>':'<div class="note">视频节点</div>');
       } else {
-        el.innerHTML = '<b>生成配置</b><small>入边 '+ins+' · 点发送出图</small>';
+        el.innerHTML = '<b>生成配置</b><div class="note">入边 '+ins+'</div><div class="note">点发送出图</div>';
       }
       const outp = document.createElement('i');
       outp.className = 'port out';
@@ -557,19 +794,19 @@ $('enhance') && ($('enhance').onclick = () => {
       el.addEventListener('pointerdown', ev => {
         if (ev.target.tagName==='TEXTAREA' || ev.target.classList.contains('port')) return;
         selected = n.id;
-        drag = { n, x: ev.clientX - n.x, y: ev.clientY - n.y };
+        drag = { n, x: ev.clientX / view.scale - n.x, y: ev.clientY / view.scale - n.y };
         el.setPointerCapture(ev.pointerId);
         render();
       });
       el.addEventListener('pointermove', ev => {
         if (!drag || drag.n !== n) return;
-        n.x = ev.clientX - drag.x; n.y = ev.clientY - drag.y;
+        n.x = ev.clientX / view.scale - drag.x; n.y = ev.clientY / view.scale - drag.y;
         el.style.left = n.x+'px'; el.style.top = n.y+'px';
         drawWires();
       });
-      el.addEventListener('pointerup', () => { drag = null; });
+      el.addEventListener('pointerup', () => { drag = null; persist(); });
       el.querySelectorAll('[data-field]').forEach(t=>{
-        t.addEventListener('input', () => { n[t.dataset.field] = t.value; });
+        t.addEventListener('input', () => { n[t.dataset.field] = t.value; persist(); });
       });
       outp.addEventListener('pointerdown', ev => { ev.stopPropagation(); wire = { from:n.id }; });
       inp.addEventListener('pointerup', ev => {
@@ -577,9 +814,9 @@ $('enhance') && ($('enhance').onclick = () => {
         if (!wire || wire.from===n.id) return;
         if (!project.edges.some(e=>e.from===wire.from && e.to===n.id))
           project.edges.push({id:'e-'+Date.now(), from:wire.from, to:n.id});
-        wire = null; render();
+        wire = null; persist(); render();
       });
-      stage.append(el);
+      world.append(el);
     });
     drawWires();
   }
@@ -595,14 +832,11 @@ $('enhance') && ($('enhance').onclick = () => {
     }).join('');
     svg.insertAdjacentHTML('afterbegin','<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#c4b59a"/></marker></defs>');
   }
-  $('cvText').onclick = () => {
-    project.nodes.push({id:'text-'+Date.now(), type:'text', x:60, y:200, text:''});
-    render();
-  };
-  $('cvCfg').onclick = () => {
-    project.nodes.push({id:'cfg-'+Date.now(), type:'config', x:300, y:200, ratio:'1:1', n:1});
-    render();
-  };
+  $('cvText').onclick = () => addNode('text', 60, 200);
+  $('cvCfg').onclick = () => addNode('config', 300, 200);
+  $('cvImg') && ($('cvImg').onclick = () => addNode('image', 80, 260));
+  $('cvVid') && ($('cvVid').onclick = () => addNode('video', 320, 260));
+  $('cvDel') && ($('cvDel').onclick = delSelected);
   $('cvSend').onclick = async () => {
     const cfg = project.nodes.find(n=>n.id===selected && n.type==='config') || project.nodes.find(n=>n.type==='config');
     if (!cfg) { setStatus('先选一个配置节点'); return; }
@@ -611,13 +845,57 @@ $('enhance') && ($('enhance').onclick = () => {
     if (out.error) { setStatus(String(out.error)); return; }
     project.nodes = out.project.nodes;
     project.edges = out.project.edges;
-    render();
+    persist(); render();
     setStatus('画布出图完成 · 结果在配置节点右侧');
   };
   stage.addEventListener('dblclick', ev => {
-    if (ev.target !== stage) return;
-    project.nodes.push({id:'text-'+Date.now(), type:'text', x:ev.offsetX, y:ev.offsetY, text:''});
-    render();
+    if (ev.target !== stage && ev.target.id !== 'cvWorld' && ev.target.id !== 'cvWires') return;
+    const w = worldFromEvent(ev);
+    addNode('text', w.x, w.y);
+  });
+  stage.addEventListener('contextmenu', ev => {
+    ev.preventDefault();
+    const w = worldFromEvent(ev);
+    showCtx(ev.clientX, ev.clientY);
+    stage._ctxWorld = w;
+  });
+  stage.addEventListener('pointerdown', ev => {
+    if (!space && ev.target !== stage && ev.target.id !== 'cvWorld' && ev.target.id !== 'cvWires') return;
+    pan = { x: ev.clientX - view.x, y: ev.clientY - view.y };
+    stage.setPointerCapture(ev.pointerId);
+  });
+  stage.addEventListener('pointermove', ev => {
+    if (!pan) return;
+    view.x = ev.clientX - pan.x;
+    view.y = ev.clientY - pan.y;
+    applyView();
+  });
+  stage.addEventListener('pointerup', () => { pan = null; });
+  stage.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const next = view.scale * (ev.deltaY>0 ? 0.92 : 1.08);
+    view.scale = Math.max(0.05, Math.min(5, next));
+    applyView();
+  }, { passive:false });
+  document.addEventListener('keydown', ev => {
+    if (ev.code==='Space') { space = true; }
+    if ((ev.key==='Delete' || ev.key==='Backspace') && state.page==='canvas' && ev.target.tagName!=='TEXTAREA' && ev.target.tagName!=='INPUT') {
+      ev.preventDefault(); delSelected();
+    }
+  });
+  document.addEventListener('keyup', ev => { if (ev.code==='Space') space = false; });
+  document.addEventListener('click', hideCtx);
+  window.__cvAddImage = (path) => { addNode('image', 80, 280); project.nodes[project.nodes.length-1].path = path; persist(); render(); };
+  window.__cvAddFile = async (file) => {
+    await ingestFiles([file]);
+    const path = state.lastImages[state.lastImages.length-1];
+    if (path) window.__cvAddImage(path);
+  };
+  stage.addEventListener('dragover', ev => ev.preventDefault());
+  stage.addEventListener('drop', async ev => {
+    ev.preventDefault();
+    const files = Array.from(ev.dataTransfer.files||[]);
+    for (const f of files) await window.__cvAddFile(f);
   });
   render();
 })();
@@ -627,6 +905,8 @@ $('enhance') && ($('enhance').onclick = () => {
   const providers = meta.providers||[];
   if (!providers.length) setStatus('还没有渠道。到插件设置填地址和密钥，保存后再「检测可用模型」。');
   else setStatus(providers.some(p=>String(p.id).includes('mock')) ? 'mock 已连接 · 可直接出图' : '已连接 '+providers.length+' 个渠道');
+  renderHist();
+  renderGallery();
   sync();
 })();
 </script>

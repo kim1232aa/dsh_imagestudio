@@ -46,7 +46,7 @@ export class MockImageProvider implements ImageProvider {
       const images = []
       for (let i = 0; i < req.n; i++) {
         const png = this.film
-          ? createFilmStill(width, height, req.prompt + ':' + i)
+          ? createFilmStill(width, height, req.prompt + ':' + i + (req.refImages?.[0]?.path ? ':i2i:' + req.refImages[0].path : ''))
           : encodePng(createSolid(width, height, hashColor(req.prompt + ':' + i)))
         images.push({
           path: `memory://${this.id}/${hash(req.prompt)}-${i}.png`,
