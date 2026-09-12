@@ -56,12 +56,8 @@ describe('AC-UI routes on host webServer', () => {
         JSON.stringify({ skillId: 'cinema-dna-21x9x3', brief: '明代夜审账房放榜，三镜电影感' }),
       )
       const planBody = planned.json as { passed?: boolean; planId?: string; score?: number }
-      if (planBody.passed === false) {
-        assert.ok(typeof planBody.score === 'number')
-        return
-      }
       assert.equal(planned.status, 200)
-      assert.ok(planBody.planId)
+      assert.ok(planBody.planId, 'plan must persist even when selfCheck.passed is false')
       const gen = await host.web.fetch(
         'POST',
         '/imagestudio/api/generate',
@@ -69,7 +65,7 @@ describe('AC-UI routes on host webServer', () => {
       )
       assert.equal(gen.status, 200)
       const out = gen.json as { images?: Array<{ path: string }>; passed?: boolean; blocked?: boolean }
-      if (out.passed === false || out.blocked) return
+      assert.notEqual(out.blocked, true)
       assert.ok(out.images && out.images.length >= 1)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -86,7 +82,7 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
-  it('AC-UI-08 low score plan does not call provider', async () => {
+  it('plan endpoint does not generate images (score may be low)', async () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
@@ -97,16 +93,17 @@ describe('AC-UI routes on host webServer', () => {
         '/imagestudio/api/plan',
         JSON.stringify({ skillId: 'cinema-dna-21x9x3', brief: 'forced fail brief' }),
       )
-      const body = planned.json as { passed?: boolean; score?: number; failures?: string[] }
+      const body = planned.json as { passed?: boolean; score?: number; planId?: string }
       assert.equal(body.passed, false)
       assert.equal(body.score, 10)
+      assert.ok(body.planId, 'low score must still persist planId so 就这样出图 works')
       assert.equal(mock.calls, before)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
 
-  it('AC-UI-08 failed stored plan skips generate', async () => {
+  it('DOC-00-6 low score plan still generates (score is advisory)', async () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
@@ -120,10 +117,9 @@ describe('AC-UI routes on host webServer', () => {
         JSON.stringify({ planId: plan.id }),
       )
       assert.equal(gen.status, 200)
-      const out = gen.json as { passed?: boolean; score?: number }
-      assert.equal(out.passed, false)
-      assert.equal(out.score, 40)
-      assert.equal(mock.calls, before)
+      const out = gen.json as { images?: unknown[]; error?: string }
+      assert.ok(Array.isArray(out.images) && out.images.length >= 1, JSON.stringify(out))
+      assert.ok(mock.calls > before)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -160,7 +156,6 @@ describe('AC-UI routes on host webServer', () => {
         JSON.stringify({ prompt: 'studio still', aspectRatio: '21:9', n: 1 }),
       )
       const out = gen.json as { images?: Array<{ path: string }>; passed?: boolean }
-      if (out.passed === false) return
       assert.ok(out.images?.[0]?.path)
       const listed = await host.web.fetch('GET', '/imagestudio/api/assets')
       const text = listed.text
@@ -219,6 +214,76 @@ describe('AC-UI routes on host webServer', () => {
       host.web.uninstall()
       const after = await host.web.fetch('GET', '/imagestudio')
       assert.notEqual(after.status, 200)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC02 pages: top tabs 普通生图/画廊/无限画布/电商', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      for (const label of ['普通生图', '画廊', '无限画布', '电商']) {
+        assert.match(res.text, new RegExp(label))
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC02 ratios are the fixed 9 in order', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      const order = ['自动', '1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2', '21:9']
+      const m = res.text.match(/RATIOS\s*=\s*\[([^\]]+)\]/)
+      assert.ok(m, 'RATIOS constant missing')
+      const listed = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1])
+      assert.deepEqual(listed, order)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC02 score never disables 就这样出图', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.match(res.text, /就这样出图/)
+      assert.doesNotMatch(res.text, /低于 82 分不出图/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC03 redline: generate without any skill', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
+      const before = mock.calls
+      const gen = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/generate',
+        JSON.stringify({ prompt: '一只青瓷茶盏放在账房桌上', aspectRatio: '1:1', n: 1 }),
+      )
+      assert.equal(gen.status, 200)
+      const out = gen.json as { images?: unknown[]; blocked?: boolean; error?: string }
+      assert.notEqual(out.blocked, true)
+      assert.ok(Array.isArray(out.images) && out.images.length >= 1, JSON.stringify(out))
+      assert.ok(mock.calls > before)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC03 redline page: no 我不能生成, negatives editable, button not score-gated', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.doesNotMatch(res.text, /这个我不能生成/)
+      assert.doesNotMatch(res.text, /低于 82/)
+      assert.match(res.text, /就这样出图/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

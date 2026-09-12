@@ -41,12 +41,17 @@ function variationPalette(): Record<string, string[]> {
 }
 
 export function selectMode(preset: SkillPreset, brief: string, opts: CompileOptions): [string, SkillMode] {
+  if (opts.mode && preset.modes[opts.mode]) return [opts.mode, preset.modes[opts.mode]]
+  const posterMode = preset.modes.poster
   const explicitPoster =
     opts.wantPoster === true ||
-    opts.mode === 'poster' ||
-    /(海报|封面|片名|视觉体系|poster|title[\s-]?card)/i.test(brief)
-  if (explicitPoster && preset.modes.poster) return ['poster', preset.modes.poster]
-  if (opts.mode && preset.modes[opts.mode]) return [opts.mode, preset.modes[opts.mode]]
+    /(海报|封面|片名|视觉体系|poster|title card)/i.test(brief)
+  const triptychIntent = /(三联|triptych|三个镜头|分镜)/i.test(brief)
+  const posterOnly = explicitPoster && isPosterOnlyBrief(brief)
+  // trigger:explicit — poster mode is never the default
+  if (posterOnly && posterMode && (posterMode.trigger !== 'explicit' || explicitPoster) && !triptychIntent) {
+    return ['poster', posterMode]
+  }
   if (preset.modes.triptych) return ['triptych', preset.modes.triptych]
   if (preset.modes['mode-a'] && /升级|原图|生活照|MODE A|mode a|保留人物/i.test(brief)) {
     return ['mode-a', preset.modes['mode-a']]
@@ -56,6 +61,13 @@ export function selectMode(preset: SkillPreset, brief: string, opts: CompileOpti
   return first
 }
 
+function isPosterOnlyBrief(brief: string): boolean {
+  const stripped = brief
+    .replace(/海报|封面|片名|视觉体系|poster|title card|请做|给我|一个|张|要/gi, '')
+    .replace(/\s+/g, '')
+    .trim()
+  return stripped.length < 2
+}
 
 function detectBriefVeto(preset: SkillPreset, brief: string): string | undefined {
   const exact = (preset.scoring.vetoes ?? []).find((v) => brief.includes(v))
@@ -98,23 +110,33 @@ function buildPlan(skill: LoadedSkill, brief: string, opts: CompileOptions, salt
   const shots = Array.from({ length: mode.shots }, (_, i) =>
     buildShot(skill.preset, mode, modeName, brief, i, rng, opts),
   )
-  if (opts.characters?.length) {
-    for (const shot of shots) {
-      const desc = opts.characters[0].descriptor
-      if (!shot.prompt.includes(desc)) {
-        shot.prompt = injectDescriptor(shot.prompt, desc)
-      }
-    }
-  }
   const compose = mode.compose
     ? {
-        mode: (mode.compose.mode as CreativePlan['compose'] extends infer C ? NonNullable<C>['mode'] : never) ?? 'triptych',
+        mode: (mode.compose.mode as NonNullable<CreativePlan['compose']>['mode']) ?? 'triptych',
         direction: (mode.compose.direction as 'vertical' | 'horizontal') ?? 'vertical',
         gapPx: Array.isArray(mode.compose.gapPx) ? mid(mode.compose.gapPx) : mode.compose.gapPx ?? 10,
         ratios: Array.isArray(mode.compose.ratios) ? mode.compose.ratios[0] : undefined,
         decorations: 'none' as const,
       }
     : undefined
+
+  const characters = opts.characters ?? (skill.preset.id === 'character-casting' ? [sheetFromBrief(brief)] : undefined)
+  if (characters?.length) {
+    for (const shot of shots) {
+      const desc = characters[0].descriptor
+      if (!shot.prompt.includes(desc)) {
+        shot.prompt = injectDescriptor(shot.prompt, desc)
+      }
+    }
+  }
+
+  if (opts.wantPoster && modeName === 'triptych' && skill.preset.modes.poster) {
+    const posterShot = buildShot(skill.preset, skill.preset.modes.poster, 'poster', brief, shots.length, rng, opts)
+    if (characters?.length && !posterShot.prompt.includes(characters[0].descriptor)) {
+      posterShot.prompt = injectDescriptor(posterShot.prompt, characters[0].descriptor)
+    }
+    shots.push(posterShot)
+  }
 
   return {
     id: randomUUID(),
@@ -135,7 +157,7 @@ function buildPlan(skill: LoadedSkill, brief: string, opts: CompileOptions, salt
       mustContainInPrompt: mode.mustContainInPrompt,
     },
     selfCheck: { score: 0, passed: false, failures: [] },
-    characters: opts.characters,
+    characters,
     brief,
   }
 }
@@ -249,7 +271,10 @@ function fillReasoning(preset: SkillPreset, brief: string, mode: string, rng: ()
     镜头: '机位贴着不允许越过的木栅，焦段固定，不给对方面孔完整特权',
     光色: '唯一油灯在权威一侧，受试者只得到地面反射',
     质感: '最多两种光学效果，服务于潮湿石板与灯焰，不堆滤镜',
-    保留人物身份: mode === 'mode-a' ? 'MODE A：保留人物身份、表情、动作、服装与原事件，只重组光与层次' : '',
+    保留人物身份:
+      mode === 'mode-a'
+        ? 'MODE A：保留人物身份、表情、动作、服装与原事件，只重组光与层次'
+        : 'MODE B：原创人物，不从参考图换脸，拒绝默认欧美广告模特脸',
   }
   const out: Record<string, string> = {}
   for (const field of preset.planFields) {
@@ -274,10 +299,12 @@ export function staticCheck(preset: SkillPreset, plan: CreativePlan, opts: Compi
       }
     }
     const mode = preset.modes[plan.mode]
-    if (mode && shot.aspectRatio !== mode.aspectRatio) {
-      failures.push(`${shot.id} aspectRatio ${shot.aspectRatio} != locked ${mode.aspectRatio}`)
+    const expectedRatio =
+      shot.role === 'poster-base' ? (preset.modes.poster?.aspectRatio ?? '3:4') : mode?.aspectRatio
+    if (expectedRatio && shot.aspectRatio !== expectedRatio) {
+      failures.push(`${shot.id} aspectRatio ${shot.aspectRatio} != locked ${expectedRatio}`)
     }
-    for (const token of mode?.mustContainInPrompt ?? []) {
+    for (const token of (shot.role === 'poster-base' ? preset.modes.poster : mode)?.mustContainInPrompt ?? []) {
       if (!shot.prompt.includes(token)) failures.push(`${shot.id} missing required phrase: ${token}`)
     }
     const limits = preset.constraints.perShotLimits
@@ -285,16 +312,37 @@ export function staticCheck(preset: SkillPreset, plan: CreativePlan, opts: Compi
       const max = Array.isArray(limits.sceneFacts) ? Math.max(...limits.sceneFacts) : Number(limits.sceneFacts)
       if (shot.sceneFacts.length > max) failures.push(`${shot.id} sceneFacts > ${max}`)
     }
-    if (limits?.primaryAction === 1 && shot.primaryAction?.includes(' and ') && / and .* and /.test(shot.primaryAction)) {
-      failures.push(`${shot.id} more than one primary action`)
+    if (limits?.primaryAction != null && shot.primaryAction) {
+      const max = Number(limits.primaryAction)
+      if (max === 1 && / and .* and /.test(shot.primaryAction)) {
+        failures.push(`${shot.id} more than one primary action`)
+      }
+    }
+    if (limits?.secondaryClue != null && shot.secondaryClue) {
+      const max = Number(limits.secondaryClue)
+      const clues = shot.secondaryClue.split(/;| and /).filter(Boolean)
+      if (clues.length > max) failures.push(`${shot.id} secondaryClue > ${max}`)
+    }
+    if (limits?.lightSources != null && shot.lightSources && shot.lightSources.length > Number(limits.lightSources)) {
+      failures.push(`${shot.id} lightSources > ${limits.lightSources}`)
+    }
+    if (
+      limits?.compositionMechanisms != null &&
+      shot.compositionMechanisms &&
+      shot.compositionMechanisms.length > Number(limits.compositionMechanisms)
+    ) {
+      failures.push(`${shot.id} compositionMechanisms > ${limits.compositionMechanisms}`)
     }
     const textures = countTextures(shot.prompt)
     if ((preset.constraints.maxTextureLayers ?? 99) < textures) {
       failures.push(`${shot.id} texture layers ${textures} exceed max`)
     }
   }
-  if (preset.variationRules && plan.shots.length >= 3) {
-    const changed = countChangedDimensions(plan.shots, preset.variationRules.dimensions)
+  if (preset.variationRules && plan.shots.filter((s) => s.role !== 'poster-base').length >= 3) {
+    const changed = countChangedDimensions(
+      plan.shots.filter((s) => s.role !== 'poster-base'),
+      preset.variationRules.dimensions,
+    )
     if (changed < preset.variationRules.minChangedDimensions) {
       failures.push(`variationRules: only ${changed} dimensions changed, need ${preset.variationRules.minChangedDimensions}`)
     }
@@ -302,17 +350,37 @@ export function staticCheck(preset: SkillPreset, plan: CreativePlan, opts: Compi
   if (opts.forceVeto) failures.push(`veto:${opts.forceVeto}`)
   if (opts.forceFailScore) failures.push('forced-low-score')
 
-  let score = 88
-  if (opts.forceFailScore) score = 70
-  if (failures.some((f) => f.startsWith('veto:'))) score = 0
-  const vetoHit = [...(preset.scoring.vetoes ?? [])].find((v) =>
-    failures.some((f) => f.includes(v) || f.startsWith('veto:')),
+  const vetoFromPrompt = (preset.scoring.vetoes ?? []).find((v) =>
+    plan.shots.some((s) => s.prompt.includes(v)),
   )
-  if (opts.forceVeto) {
-    return { score: 0, passed: false, failures: [`veto:${opts.forceVeto}`], veto: opts.forceVeto }
+  const vetoHit = opts.forceVeto || vetoFromPrompt
+  return scoreFromRubric(preset, failures, {
+    forceFail: !!opts.forceFailScore,
+    veto: typeof vetoHit === 'string' ? vetoHit : undefined,
+  })
+}
+
+export function scoreFromRubric(
+  preset: SkillPreset,
+  failures: string[],
+  opts: { forceFail?: boolean; veto?: string } = {},
+): ScoreCard {
+  if (opts.veto) {
+    return { score: 0, passed: false, failures: failures.length ? failures : [`veto:${opts.veto}`], veto: opts.veto }
   }
-  const passed = score >= preset.scoring.threshold && failures.length === 0 && !vetoHit
-  return { score, passed, failures }
+  const breakdown: Array<{ item: string; score: number; max: number }> = []
+  let earned = 0
+  let max = 0
+  for (const row of preset.scoring.rubric) {
+    max += row.max
+    const piece = failures.length ? Math.round(row.max * 0.3) : Math.round(row.max * 0.9)
+    earned += piece
+    breakdown.push({ item: row.item, score: piece, max: row.max })
+  }
+  let score = max ? Math.round((earned / max) * 100) : 88
+  if (opts.forceFail) score = 70
+  const passed = score >= preset.scoring.threshold && failures.length === 0
+  return { score, passed, failures, breakdown }
 }
 
 export function countChangedDimensions(shots: ShotSpec[], dimensions: string[]): number {
@@ -326,6 +394,18 @@ export function countChangedDimensions(shots: ShotSpec[], dimensions: string[]):
 
 function countTextures(prompt: string): number {
   return TEXTURE_TERMS.filter((t) => prompt.toLowerCase().includes(t)).length
+}
+
+function sheetFromBrief(brief: string): NonNullable<CreativePlan['characters']>[number] {
+  const clipped = sanitize(brief).slice(0, 80) || 'an East Asian adult'
+  const descriptor =
+    `mid-thirties East Asian presence derived from "${clipped}", close-cropped hair, weathered face, faded indigo cotton robe with worn cuffs`
+  return {
+    id: 'lead-01',
+    role: '主角',
+    descriptor,
+    consistencyAnchors: ['hair', 'facial structure', 'costume'],
+  }
 }
 
 function injectDescriptor(prompt: string, descriptor: string): string {

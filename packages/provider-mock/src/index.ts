@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ImageProvider, ImageRequest, ImageResult, ProviderInfo } from '../../core/src/types.ts'
+import type { ImageProvider, ImageRequest, ImageResult, ProviderInfo, VideoRequest } from '../../core/src/types.ts'
 import { createSolid, encodePng } from '../../compose/src/png.ts'
 import { createFilmStill } from './film.ts'
+import { renderMockVideo } from './video.ts'
 
 export interface MockProviderOptions {
   id?: string
@@ -18,7 +19,7 @@ export class MockImageProvider implements ImageProvider {
   concurrent = 0
   maxConcurrent = 0
   lastRequest: ImageRequest | undefined
-  private readonly latencyMs: number
+  latencyMs: number
   private readonly film: boolean
 
   constructor(opts: MockProviderOptions = {}) {
@@ -29,7 +30,7 @@ export class MockImageProvider implements ImageProvider {
   }
 
   info(): ProviderInfo {
-    return { id: this.id, protocol: 'mock', model: this.model, kinds: ['text-to-image', 'image-to-image', 'describe'] }
+    return { id: this.id, protocol: 'mock', model: this.model, kinds: ['text-to-image', 'image-to-image', 'describe', 'text-to-video', 'image-to-video'] }
   }
 
   async generate(req: ImageRequest, signal?: AbortSignal): Promise<ImageResult> {
@@ -39,8 +40,9 @@ export class MockImageProvider implements ImageProvider {
     this.maxConcurrent = Math.max(this.maxConcurrent, this.concurrent)
     try {
       if (signal?.aborted) throw abortError()
-      if (this.latencyMs) await sleep(this.latencyMs, signal)
-      const { width, height } = pixelsFor(req.aspectRatio)
+      const wait = req.prompt.includes('__SLOW__') ? Math.max(this.latencyMs, 400) : this.latencyMs
+      if (wait) await sleep(wait, signal)
+      const { width, height } = sizeFor(req.aspectRatio, req.clarity)
       const images = []
       for (let i = 0; i < req.n; i++) {
         const png = this.film
@@ -69,13 +71,50 @@ export class MockImageProvider implements ImageProvider {
   async describe(images: { path: string }[], instruction?: string): Promise<string> {
     return `analysis-only notes (${images.length} refs): ${instruction ?? 'abstract composition / palette / subject class; do not copy'}`
   }
+
+  async generateVideo(req: VideoRequest, signal?: AbortSignal) {
+    if (signal?.aborted) {
+      const e = new Error('Aborted')
+      e.name = 'AbortError'
+      throw e
+    }
+    const clip = await renderMockVideo(req, signal)
+    const hash = createHash('sha256').update(clip.bytes).digest('hex').slice(0, 8)
+    const path = `memory://${this.id}/video-${hash}.mp4`
+    return {
+      path,
+      url: path,
+      width: clip.width,
+      height: clip.height,
+      durationSec: clip.durationSec,
+      mime: 'video/mp4',
+      providerId: this.id,
+      model: this.model,
+      bytes: clip.bytes,
+    }
+  }
+}
+
+const LONG_SIDE: Record<string, number> = {
+  '自动': 1024,
+  auto: 1024,
+  '1K': 1024,
+  '2K': 2048,
+  '4K': 4096,
+}
+
+/** 9 fixed ratios from 02/03. 自动 → 1:1. Long side set by clarity. */
+export function sizeFor(aspect: string, clarity?: string): { width: number; height: number } {
+  const long = LONG_SIDE[clarity ?? '1K'] ?? 1024
+  const ratio = !aspect || aspect === '自动' || aspect === 'auto' ? '1:1' : aspect
+  const [a, b] = ratio.split(':').map(Number)
+  if (!a || !b) return { width: long, height: long }
+  if (a >= b) return { width: long, height: Math.max(1, Math.round(long * (b / a))) }
+  return { width: Math.max(1, Math.round(long * (a / b))), height: long }
 }
 
 export function pixelsFor(aspect: string): { width: number; height: number } {
-  const [a, b] = aspect.split(':').map(Number)
-  if (!a || !b) return { width: 1024, height: 1024 }
-  if (a >= b) return { width: 1024, height: Math.max(1, Math.round(1024 * (b / a))) }
-  return { width: Math.max(1, Math.round(1024 * (a / b))), height: 1024 }
+  return sizeFor(aspect, '1K')
 }
 
 function hash(s: string): string {

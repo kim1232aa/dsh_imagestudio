@@ -39,21 +39,6 @@
   }
 
   function openStudio() {
-    const main = document.getElementById("main") || document.querySelector("main");
-    if (main) {
-      let frame = document.querySelector("[" + FRAME_ATTR + "]");
-      if (!frame) {
-        frame = document.createElement("iframe");
-        frame.setAttribute(FRAME_ATTR, "1");
-        frame.setAttribute("title", "Image Studio");
-        frame.src = "/imagestudio?embed=1";
-        frame.style.cssText = "width:100%;height:100%;border:0;background:#12110e;display:block";
-        main.innerHTML = "";
-        main.appendChild(frame);
-      }
-      document.documentElement.setAttribute("data-imagestudio-open", "1");
-      return;
-    }
     window.location.assign("/imagestudio");
   }
 

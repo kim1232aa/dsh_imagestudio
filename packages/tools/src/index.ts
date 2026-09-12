@@ -132,18 +132,16 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
         const plan = ctx.imageSkills.compile(args.skillId, args.brief, { wantPoster: args.wantPoster })
         const score = await ctx.serial('image/score', plan)
         if (score) plan.selfCheck = score as CreativePlan['selfCheck']
-        if (!plan.selfCheck.passed) {
-          return asJson({
-            passed: false,
-            score: plan.selfCheck.score,
-            failures: plan.selfCheck.failures,
-            veto: plan.selfCheck.veto ?? null,
-            plan,
-          })
-        }
         ctx.imageSkills.plans.set(plan.id, plan)
         await ctx.imageAssets.writePlan(SESSION, plan.id, plan)
-        return asJson({ planId: plan.id, plan, passed: true, score: plan.selfCheck.score })
+        return asJson({
+          planId: plan.id,
+          plan,
+          passed: plan.selfCheck.passed,
+          score: plan.selfCheck.score,
+          failures: plan.selfCheck.failures,
+          veto: plan.selfCheck.veto ?? null,
+        })
       },
     }),
   )

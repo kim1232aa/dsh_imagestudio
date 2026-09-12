@@ -17,7 +17,13 @@ export type AspectRatio =
   | (string & {})
 
 export type RefUsage = 'analysis-only' | 'image-to-image'
-export type TaskKind = 'text-to-image' | 'image-to-image' | 'describe' | 'compose'
+export type TaskKind =
+  | 'text-to-image'
+  | 'image-to-image'
+  | 'describe'
+  | 'compose'
+  | 'text-to-video'
+  | 'image-to-video'
 
 export interface AssetRef {
   path: string
@@ -98,10 +104,13 @@ export interface CreativePlan {
   brief: string
 }
 
+export type ClarityTier = '自动' | '1K' | '2K' | '4K' | 'auto'
+
 export interface ImageRequest {
   prompt: string
   negative?: string
   aspectRatio: AspectRatio
+  clarity?: ClarityTier
   n: number
   refImages?: AssetRef[]
   refUsage: RefUsage
@@ -126,11 +135,32 @@ export interface ProviderInfo {
   kinds: TaskKind[]
 }
 
+export interface VideoRequest {
+  prompt: string
+  durationSec: number
+  aspectRatio: AspectRatio
+  firstFramePath?: string
+  lastFramePath?: string
+}
+
+export interface VideoResult {
+  jobId?: string
+  path: string
+  url: string
+  width: number
+  height: number
+  durationSec: number
+  mime: string
+  providerId: string
+  model: string
+}
+
 export interface ImageProvider {
   info(): ProviderInfo
   generate(req: ImageRequest, signal?: AbortSignal): Promise<ImageResult>
   describe?(images: AssetRef[], instruction?: string, signal?: AbortSignal): Promise<string>
   edit?(req: ImageRequest, signal?: AbortSignal): Promise<ImageResult>
+  generateVideo?(req: VideoRequest, signal?: AbortSignal): Promise<Omit<VideoResult, 'jobId'>>
 }
 
 export type GuardVerdict = { blocked: true; reason: string }

@@ -1,13 +1,55 @@
 {
   "verdict": "pass",
-  "score": 4,
+  "score": 87,
+  "summary": "tasks.json T1-T8 matches new 00-03: no score gate, jobs/cancel first, raster pixels, history, gallery hash, built-in video on same JobStore, canvas wires, ecom plan-then-confirm, then preview shots. Validator ok. Remaining issues are minor environment limits (official dsh binary, 100-node fps).",
   "issues": [
     {
       "severity": "minor",
-      "message": "Live official dsh web chrome (AC-UI-01 click) remains a manual check; MemoryWebServer covers the same routes.",
-      "fix": "Run npx @deepseek-ai/dsh web --patch ./examples/dsh-web.patch.yml on a machine with dsh."
+      "task_id": "T5",
+      "category": "environment",
+      "problem": "This host has no ffmpeg; a runtime-encoded video would fail.",
+      "fix": "Use checked-in packages/provider-mock/fixtures/silent.webm and /imagestudio/api/file for playback; keep a second raw URL field to prove no rewrite."
+    },
+    {
+      "severity": "minor",
+      "task_id": "T6",
+      "category": "executability",
+      "problem": "MemoryWebServer only supports exact|prefix routes, not :id params.",
+      "fix": "Register prefix /imagestudio/api/canvas and parse the remainder in the handler."
+    },
+    {
+      "severity": "minor",
+      "task_id": "T8",
+      "category": "environment",
+      "problem": "Official dsh web is not installed on this host; preview.mjs is the demo shell.",
+      "fix": "Accept preview.mjs + MemoryWebServer as the automated gate; list official dsh chrome as open_question."
     }
   ],
-  "coverage_gaps": [],
-  "suggested_skills": []
+  "coverage_gaps": [
+    "03 chapter 9 secrets settings page not in this slice",
+    "Canvas 100-node 30fps and inpaint red-box rules not in this slice",
+    "Live vendor protocols marked 未验证"
+  ],
+  "suggested_skills": [
+    {
+      "skill": "swe-loop",
+      "use": "Execute T1-T7 with tests first",
+      "task_id": "T1"
+    },
+    {
+      "skill": "test-driven-development",
+      "use": "Write failing tests in tests/jobs.test.ts before JobStore",
+      "task_id": "T1"
+    },
+    {
+      "skill": "agent-browser",
+      "use": "T8 preview click-through screenshots",
+      "task_id": "T8"
+    },
+    {
+      "skill": "verification-before-completion",
+      "use": "Do not mark 03 fully passed",
+      "task_id": "T8"
+    }
+  ]
 }

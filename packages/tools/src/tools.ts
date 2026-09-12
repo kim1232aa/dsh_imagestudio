@@ -49,12 +49,10 @@ export async function imageSkillPlan(
   })
   const score = await studio.pipeline.bus.serial<CreativePlan, CreativePlan['selfCheck']>('image/score', plan)
   if (score) plan.selfCheck = score
-  if (!plan.selfCheck.passed) {
-    return { passed: false, score: plan.selfCheck.score, failures: plan.selfCheck.failures }
-  }
   studio.pipeline.plans.set(plan.id, plan)
   await studio.store.writePlan(studio.sessionId, plan.id, plan)
-  return { planId: plan.id, plan }
+  // 分数随 plan 返回，调用方展示；不因 passed=false 丢掉 planId
+  return { planId: plan.id, plan, score: plan.selfCheck.score, passed: plan.selfCheck.passed, failures: plan.selfCheck.failures }
 }
 
 export async function imageGenerate(

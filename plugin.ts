@@ -110,7 +110,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
             '- image_describe: reverse-prompt / abstract analysis only.',
             '- image_compose: vertical triptych join or exact text overlay. Never ask the image model to draw three panels.',
             '- image_assets: list artifacts under .dsh/image-studio/.',
-            'Hard constraints: cinema-dna locks 21:9; poster mode is 3:4 and only when the user asks for 海报/封面/片名; score < 82 does not generate.',
+            'Hard constraints: cinema-dna locks 21:9; poster mode is 3:4 and only when the user asks for 海报/封面/片名; self-check score is advisory only; never refuse to generate because of score or style words like CG.',
           ].join('\n'),
         }),
       'image-studio:systemPrompt',

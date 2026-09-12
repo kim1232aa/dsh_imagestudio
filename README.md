@@ -5,7 +5,9 @@ DeepSeek Harness（dsh / Cordis）插件：**先做导演判断，再出图，�
 代号 `dsh-image-studio` · 版本 v0.2  
 把 [Nova Image Studio](https://github.com/tianjiangqiji/nova-image-studio) 的生图工程能力（多模型路由、任务产物、反推、拼接）做成 dsh 插件，再把 FANTASY 系列 Skill 的创作判断收成可强制执行的 `preset.yaml`。
 
-独立入口在官方 DSH 壳里：侧栏「新会话」旁的「生图」。工作台是自写的 Nova 式文生图/图生图/策划/反推/三联，加上 5 个 FANTASY skill，不是搬 VisioWork 或 Nova 源码，也不做无限画布/PWA。
+独立入口在官方 DSH 壳里：侧栏「新会话 / New Session」旁的「生图」。工作台是自写的 Nova 式文生图/图生图/策划/反推/三联，加上 5 个 FANTASY skill，不是搬 VisioWork 或 Nova 源码，也不做无限画布/PWA。
+
+**交接：[`docs/HANDOVER.md`](docs/HANDOVER.md)**（怎么跑官方 dsh、验收缺口、已知坑）。运行手册：[`docs/HANDOFF.md`](docs/HANDOFF.md)。
 
 ## 接到官方 DeepSeek Harness
 
@@ -34,7 +36,8 @@ Settings → Plugins 应出现 `image-studio`（ACTIVE）。Agent 可见 6 个�
 
 ```bash
 node scripts/gen-dsh-patch.mjs
-npx @deepseek-ai/dsh web --patch ./examples/dsh-web.patch.yml
+# --patch 写在 web 子命令之前，否则 0.1.5-rc.1 报 unknown option
+dsh --profile web --patch ./examples/dsh-web.patch.yml --no-open --port 3081
 ```
 
 打开 http://127.0.0.1:3080 → Settings → Plugins。应看到含 `image-ui` 的 ACTIVE fiber：
@@ -86,7 +89,7 @@ node --test --experimental-strip-types tests/*.test.ts
 
 | id | 上游 | 状态 |
 |---|---|---|
-| cinema-dna-21x9x3 | FANTASY cinema-dna | 硬锁 21:9，三联 8–12px 黑缝，低于 82 分不出图 |
+| cinema-dna-21x9x3 | FANTASY cinema-dna | 建议 21:9 三联、本地 8–12px 黑缝；分数只展示，不拦出图 |
 | life-force-portrait | FANTASY life-force | MODE A 保留身份，质感层 ≤ 2 |
 | photography-simulation | FANTASY photo sim | 相机/胶片作约束 |
 | movie-poster | FANTASY poster | `supersededBy: cinema-dna-21x9x3` |

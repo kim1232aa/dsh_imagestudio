@@ -19,15 +19,16 @@ export function createPipeline(): Pipeline {
 export function applyBuiltinRequestHooks(req: ImageRequest): ImageRequest {
   if (req.plan) {
     const shot = req.shotId ? req.plan.shots.find((s) => s.id === req.shotId) : req.plan.shots[0]
+    // 03 红线：skill 比例/负面词是默认建议，用户传入的优先，不锁死。
     if (shot) {
-      req.prompt = shot.prompt
-      req.aspectRatio = shot.aspectRatio
-      req.negative = mergeNegative(shot.negative, req.plan.constraints.negativePatch)
+      if (!req.prompt) req.prompt = shot.prompt
+      if (!req.aspectRatio) req.aspectRatio = shot.aspectRatio
+      req.negative = mergeNegative(req.negative || shot.negative, req.plan.constraints.negativePatch)
     } else {
       req.negative = mergeNegative(req.negative, req.plan.constraints.negativePatch)
-      if (req.plan.shots[0]) req.aspectRatio = req.plan.shots[0].aspectRatio
+      if (!req.aspectRatio && req.plan.shots[0]) req.aspectRatio = req.plan.shots[0].aspectRatio
     }
-    req.refUsage = req.plan.constraints.referenceImages.usage
+    if (!req.refUsage) req.refUsage = req.plan.constraints.referenceImages.usage
   }
   if (req.refUsage === 'analysis-only' && req.refImages?.length) {
     req.refImages = undefined
@@ -55,10 +56,7 @@ export async function runGenerate(
   const guard = p.bus.bail<ImageRequest, GuardVerdict>('image/guard', req)
   if (guard?.blocked) return { blocked: true, reason: guard.reason }
 
-  if (req.plan && !req.plan.selfCheck.passed) {
-    return { passed: false, score: req.plan.selfCheck.score, failures: req.plan.selfCheck.failures }
-  }
-
+  // 00 §六 / 02 §一：分数只展示，不拦出图。guard 仅保留宿主级硬拦截。
   const prepared = await p.bus.waterfall('image/before-request', req)
   return dispatchGenerate(p.registry, prepared, opts, () => {
     p.generateCalls++
@@ -73,10 +71,6 @@ export async function runGenerateOnContext(
 ): Promise<{ blocked: true; reason: string } | { passed: false; score: number; failures: string[] } | ImageResult> {
   const guard = ctx.bail('image/guard', req) as GuardVerdict | undefined
   if (guard?.blocked) return { blocked: true, reason: guard.reason }
-
-  if (req.plan && !req.plan.selfCheck.passed) {
-    return { passed: false, score: req.plan.selfCheck.score, failures: req.plan.selfCheck.failures }
-  }
 
   const prepared = (await ctx.waterfall('image/before-request', req, async () => req)) as ImageRequest
   return dispatchGenerate(ctx.imagegen, prepared, opts, undefined, (a, b) =>

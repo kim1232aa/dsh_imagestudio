@@ -10,6 +10,8 @@ export {
 export type { ProviderConfig, StudioConfig } from './config.ts'
 export * from './errors.ts'
 export * from './pipeline.ts'
+export { JobStore } from './jobs.ts'
+export type { Job, JobInit, JobKind, JobRecord, JobStatus } from './jobs.ts'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { ImageGenRegistry } from './registry.ts'

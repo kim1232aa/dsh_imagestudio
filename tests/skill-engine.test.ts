@@ -127,7 +127,8 @@ describe('AC-SK skill engine', () => {
       plan,
     })
     assert.equal(mock.lastRequest?.refImages?.length ?? 0, 0)
-    assert.equal(mock.lastRequest?.aspectRatio, '21:9')
+    // 03 红线：用户手动改的比例优先生效；plan 默认 21:9 只是建议
+    assert.equal(mock.lastRequest?.aspectRatio, '16:9')
   })
 
   it('AC-SK-13 poster 3:4 and required phrase', async () => {
@@ -162,7 +163,7 @@ describe('AC-SK skill engine', () => {
     assert.ok(changed >= 4, `changed=${changed}`)
   })
 
-  it('AC-SK-17 score below threshold does not call provider', async () => {
+  it('DOC-00-6 score below threshold still calls provider', async () => {
     const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
     const plan = compilePlan(skills[0], '明代科举', { forceFailScore: true })
     const p = createPipeline()
@@ -176,8 +177,8 @@ describe('AC-SK skill engine', () => {
       refUsage: 'analysis-only',
       plan,
     })
-    assert.equal(mock.calls, 0)
-    assert.equal('passed' in out && out.passed, false)
+    assert.ok(mock.calls >= 1)
+    assert.ok(!('passed' in out && out.passed === false))
   })
 
   it('AC-SK-18 veto overrides score', async () => {

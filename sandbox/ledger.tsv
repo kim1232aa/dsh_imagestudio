@@ -1,13 +1,12 @@
-iter	task	phase	tests	quality	pass	note
-0	-	baseline	48/48	-	-	clean baseline before T1
-1	T1	engineer	-	-	-	mount image-ui + MemoryWebServer in bootStudio
-1	T1	qa	52/52	min4	yes	AC-UI-01 HTML 200; image-ui fiber ACTIVE
-2	T2	engineer	-	-	-	plan/generate/file 403 on memory web
-2	T2	qa	52/52	min4	yes	AC-UI-06 generate; AC-UI-09 403
-3	T3	engineer	-	-	-	studio modes compose/describe/edit + 对话
-3	T3	qa	52/52	min4	yes	page tests; no VisioWork/canvas
-4	-	end	52/52	-	yes	pr_mode=none no remote PR
-5	cont	qa	58/58	min4	yes	AC-UI-08/09 AC-TL-20/21 AC-EV-03
+iter	phase	verdict	score	blocking	major	change
+0	build	-	-	-	-	new 03-core plan 7 components 8 tasks validator ok
+1	critique	revise	74	1	2	PE: T1 async shape break; T4 no webm fixture; T5 untestable canvas
+2	revise	-	-	-	-	T1 keep sync generate + __SLOW__ abort; T4 fixture path; T5 canvas-graph.ts
+0	build	-	-	-	-	new 03-core slice: 6 components 6 tasks validator ok
+1	critique	revise	78	0	2	PE: T1 missing boot.ts ghost sweep; T3 mp4 fixture not in repo
+2	revise	-	-	-	-	added boot.ts failRunningOnBoot; mock BMFF stub; canvas.ts isolation
+3	critique	pass	88	0	0	PE pass after file/test mismatch cleanup T3-T5
+4	critique	pass	87	0	0	PE on current T1-T8 tasks.json: minors only (webm fixture, prefix routes, preview-not-official-dsh)
 
-6	plan-loop	validate	-	ok	yes	validate_plan.py ok tasks=4
-7	T1-T4	qa	60/60	min4	yes	AC-UI-11 + README v0.2 critique pass
+3	revise	-	-	-	-	fix T3/T4/T5 files arrays that pointed at the wrong features
+4	critique	pass	86	0	0	PE after file-map fix; canvas sizing and mp4 fixture are minor

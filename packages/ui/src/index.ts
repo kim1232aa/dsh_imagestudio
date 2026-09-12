@@ -10,8 +10,10 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { runGenerateOnContext } from '../../core/src/pipeline.ts'
+import { JobStore } from '../../core/src/jobs.ts'
 import type { ImageRequest } from '../../core/src/types.ts'
 import { studioPage } from './studio-page.ts'
+import { defaultProject, placeResultNode, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
 import { assertInsideWorkspace } from '../../assets/src/paths.ts'
 import { PathEscapeError } from '../../core/src/errors.ts'
 
@@ -49,8 +51,8 @@ function send(res: import('node:http').ServerResponse, status: number, body: unk
   res.end(raw)
 }
 
-async function persist(ctx: Context, req: ImageRequest, providerId?: string) {
-  const out = await runGenerateOnContext(ctx, req, { providerId })
+async function persist(ctx: Context, req: ImageRequest, providerId?: string, signal?: AbortSignal) {
+  const out = await runGenerateOnContext(ctx, req, { providerId, signal })
   if ('blocked' in out || 'passed' in out) return out
   const taskId = randomUUID()
   const images = []
@@ -66,6 +68,9 @@ async function persist(ctx: Context, req: ImageRequest, providerId?: string) {
 }
 
 export function apply(ctx: Context): void {
+  const jobStore = new JobStore(ctx.imageAssets.root)
+  jobStore.failRunningOnBoot()
+
   const attach = (webCtx: Context) => {
     const web = (webCtx as Context & { webServer?: WebServer }).webServer
     if (!web || typeof web.register !== 'function') return
@@ -121,7 +126,8 @@ export function apply(ctx: Context): void {
               const abs = join(ctx.imageAssets.root, rel)
               assertInsideWorkspace(ctx.imageAssets.root, abs)
               const bytes = await readFile(abs)
-              res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' })
+              const mime = rel.endsWith('.mp4') ? 'video/mp4' : rel.endsWith('.webm') ? 'video/webm' : 'image/png'
+              res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
               res.end(bytes)
             } catch (err) {
               const status = err instanceof PathEscapeError ? 403 : 404
@@ -129,29 +135,43 @@ export function apply(ctx: Context): void {
             }
             return
           }
+          if (url.pathname === '/imagestudio/api/jobs' && (!req.method || req.method === 'GET')) {
+            send(res, 200, { jobs: jobStore.list() })
+            return
+          }
+          if (url.pathname === '/imagestudio/api/canvas' && (!req.method || req.method === 'GET')) {
+            send(res, 200, { project: defaultProject() })
+            return
+          }
           if (req.method === 'POST' && url.pathname.startsWith('/imagestudio/api/')) {
             const raw = await readBody(req)
             const body = raw ? JSON.parse(raw) : {}
             if (url.pathname === '/imagestudio/api/plan') {
-              const plan = ctx.imageSkills.compile(body.skillId, body.brief, { wantPoster: !!body.wantPoster })
+              const plan = ctx.imageSkills.compile(body.skillId, body.brief, {
+                wantPoster: !!body.wantPoster,
+                mode: typeof body.mode === 'string' ? body.mode : undefined,
+              })
               const score = await ctx.serial('image/score', plan)
               if (score) plan.selfCheck = score as typeof plan.selfCheck
-              if (!plan.selfCheck.passed) {
-                send(res, 200, { passed: false, score: plan.selfCheck.score, failures: plan.selfCheck.failures, plan })
-                return
-              }
               ctx.imageSkills.plans.set(plan.id, plan)
               await ctx.imageAssets.writePlan('studio', plan.id, plan)
-              send(res, 200, { passed: true, planId: plan.id, plan, score: plan.selfCheck.score })
+              send(res, 200, {
+                passed: plan.selfCheck.passed,
+                planId: plan.id,
+                plan,
+                score: plan.selfCheck.score,
+                failures: plan.selfCheck.failures,
+              })
               return
             }
             if (url.pathname === '/imagestudio/api/generate') {
               const plan = body.planId ? ctx.imageSkills.plans.get(body.planId) : undefined
               const shot = plan && body.shotId ? plan.shots.find((s) => s.id === body.shotId) : plan?.shots[0]
               const reqImg: ImageRequest = {
-                prompt: shot?.prompt ?? body.prompt ?? '',
-                negative: shot?.negative,
-                aspectRatio: shot?.aspectRatio ?? body.aspectRatio ?? '1:1',
+                prompt: body.prompt || shot?.prompt || '',
+                negative: body.negative ?? shot?.negative,
+                aspectRatio: body.aspectRatio || shot?.aspectRatio || '1:1',
+                clarity: body.clarity,
                 n: body.n ?? 1,
                 refUsage: plan?.constraints.referenceImages.usage ?? 'analysis-only',
                 plan,
@@ -161,7 +181,115 @@ export function apply(ctx: Context): void {
                 send(res, 400, { error: 'prompt or planId required' })
                 return
               }
-              send(res, 200, await persist(ctx, reqImg, body.providerId))
+              const job = jobStore.create({ kind: 'image', prompt: reqImg.prompt })
+              try {
+                const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
+                jobStore.finish(job.id, 'done')
+                send(res, 200, { jobId: job.id, ...out })
+              } catch (err) {
+                const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
+                send(res, aborted ? 200 : 500, { jobId: job.id, status: aborted ? 'canceled' : 'failed', error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/video') {
+              const provider = ctx.imagegen.resolve(body.providerId)
+              if (typeof provider.generateVideo !== 'function') {
+                send(res, 400, { error: '当前渠道没有内置视频协议。到设置填视频渠道，不要再装插件包。' })
+                return
+              }
+              const job = jobStore.create({ kind: 'video', prompt: body.prompt || '' })
+              try {
+                const raw = await provider.generateVideo({
+                  prompt: body.prompt || '',
+                  durationSec: Number(body.durationSec) || 2,
+                  aspectRatio: body.aspectRatio || '16:9',
+                  firstFramePath: body.firstFramePath,
+                  lastFramePath: body.lastFramePath,
+                }, job.controller.signal)
+                const bytes = (raw as { bytes?: Uint8Array }).bytes ?? new Uint8Array()
+                const taskId = randomUUID()
+                const ref = await ctx.imageAssets.writeImage('studio', taskId, 'clip.mp4', bytes, {
+                  width: raw.width,
+                  height: raw.height,
+                  mime: 'video/mp4',
+                })
+                jobStore.finish(job.id, 'done')
+                send(res, 200, {
+                  jobId: job.id,
+                  taskId,
+                  path: ref.path,
+                  url: ref.path,
+                  width: raw.width,
+                  height: raw.height,
+                  durationSec: raw.durationSec,
+                  mime: 'video/mp4',
+                  providerId: raw.providerId,
+                  model: raw.model,
+                })
+              } catch (err) {
+                const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
+                send(res, aborted ? 200 : 500, {
+                  jobId: job.id,
+                  status: aborted ? 'canceled' : 'failed',
+                  error: err instanceof Error ? err.message : String(err),
+                })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/canvas' && req.method === 'POST') {
+              send(res, 200, { project: body.project || defaultProject() })
+              return
+            }
+            if (url.pathname === '/imagestudio/api/canvas/generate') {
+              const project = (body.project || defaultProject()) as CanvasProject
+              const configNodeId = body.configNodeId || project.nodes.find((n) => n.type === 'config')?.id
+              if (!configNodeId) {
+                send(res, 400, { error: 'configNodeId required' })
+                return
+              }
+              const resolved = resolvePrompt(project, configNodeId)
+              const cfg = project.nodes.find((n) => n.id === configNodeId)
+              const reqImg: ImageRequest = {
+                prompt: resolved.prompt || body.prompt || 'canvas',
+                aspectRatio: cfg?.ratio || body.aspectRatio || '1:1',
+                n: cfg?.n ?? 1,
+                refUsage: resolved.refImages.length ? 'image-to-image' : 'analysis-only',
+                refImages: resolved.refImages.map((path) => ({
+                  path,
+                  width: 0,
+                  height: 0,
+                  mime: 'image/png',
+                  sha256: '',
+                })),
+              }
+              const job = jobStore.create({ kind: 'image', prompt: reqImg.prompt })
+              try {
+                const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
+                jobStore.finish(job.id, 'done')
+                const images = (out as { images?: Array<{ path: string }> }).images || []
+                let next = project
+                for (const img of images) {
+                  if (img.path) next = placeResultNode(next, configNodeId, img)
+                }
+                send(res, 200, { jobId: job.id, project: next, images })
+              } catch (err) {
+                const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
+                send(res, aborted ? 200 : 500, { error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/cancel') {
+              const id = body.jobId || body.id
+              if (!id) {
+                send(res, 400, { error: 'jobId required' })
+                return
+              }
+              const job = jobStore.cancel(id)
+              send(res, 200, { jobId: job.id, status: job.status })
               return
             }
             if (url.pathname === '/imagestudio/api/edit') {
