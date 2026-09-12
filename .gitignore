@@ -3,9 +3,11 @@ lib/
 dist/
 coverage/
 .dsh/
+.dsh-preview/
 *.log
 .DS_Store
 .env
 .credentials.yaml
 tmp/
 .jspace/
+testwrite.txt
