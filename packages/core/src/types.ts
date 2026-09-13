@@ -117,6 +117,11 @@ export interface ImageRequest {
   seed?: number
   plan?: CreativePlan
   shotId?: string
+  /**
+   * SPEC §0.4：plan.selfCheck.passed === false 时默认拦出图（PLAN_REJECTED）；
+   * force=true 显式放行。无 plan 的裸生成不受此门限制。
+   */
+  force?: boolean
   providerOptions?: Record<string, JsonValue>
 }
 
