@@ -3,6 +3,20 @@ version: 1.2.2
 title: CINEMA DNA 21:9 × 3
 source: SKILL.md
 
+triggers:
+  - 电影三联
+  - '21:9 电影静帧'
+  - 用 9 张图讲一个故事
+  - 九宫格故事板
+  - 电影感分镜
+  - 导演镜头感的三连图
+  - 宽幅电影画面
+  - 镜头测试
+antiTriggers:
+  - 电影海报
+  - 把这张照片修出电影感
+  - 角色三视图
+
 modes:
   triptych:
     shots: 3

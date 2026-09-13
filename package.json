@@ -7,7 +7,7 @@
   "exports": {
     ".": "./plugin.ts",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./client": "./packages/ui/src/client.js",
+    "./client": "./packages/client/lib/client.js",
     "./core": "./packages/core/src/index.ts",
     "./tools": "./packages/tools/src/index.ts"
   },
@@ -34,6 +34,7 @@
     "accept": "node --experimental-strip-types scripts/accept.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "patch:web": "node scripts/gen-dsh-patch.mjs",
+    "build:client": "node node_modules/tsdown/dist/run.mjs -c packages/client/tsdown.config.ts",
     "build": "echo 'Type-strip ESM; Node 22.19+/24 loads .ts via --experimental-strip-types / dsh loader.'"
   },
   "dsh": {
@@ -42,7 +43,19 @@
     },
     "client": {
       "platform": "web",
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "external": [
+        "react",
+        "react/jsx-runtime"
+      ],
+      "immediately": true
     }
   },
   "peerDependencies": {
@@ -68,7 +81,12 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "@types/node": "^22.20.2",
+    "@types/react": "^18.3.12",
+    "react": "^18.3.1",
+    "tsdown": "^0.23.0",
+    "typescript": "^5.7.2"
   },
   "dependencies": {
     "jpeg-js": "^0.4.4"

@@ -24,7 +24,7 @@ export class MemoryWebServer {
     return () => {}
   }
 
-  async fetch(method: string, url: string, body?: string): Promise<{ status: number; type: string; text: string; json?: unknown }> {
+  async fetch(method: string, url: string, body?: string): Promise<{ status: number; type: string; text: string; json?: unknown; headers: Record<string, string> }> {
     const path = new URL(url, 'http://127.0.0.1').pathname
     const route = [...this.routes].reverse().find((r) =>
       r.kind === 'exact' ? r.path === path : path === r.path || path.startsWith(r.path.endsWith('/') ? r.path : `${r.path}/`) || path === r.path,
@@ -45,7 +45,7 @@ export class MemoryWebServer {
         json = undefined
       }
     }
-    return { status: res.statusCode, type, text, json }
+    return { status: res.statusCode, type, text, json, headers: { ...res.headers } }
   }
 }
 
