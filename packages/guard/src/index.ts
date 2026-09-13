@@ -1,13 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { GuardVerdict, ImageRequest } from '../../core/src/types.ts'
 
-const DEFAULT_BLOCK = [/\b(child\s*porn|csam)\b/i, /\bmake a bomb\b/i]
+// 验收红线（docs/03-验收标准.md 零章）：没有敏感词过滤、没有关键词黑名单、
+// 没有内容审查。本模块因此不内置任何拦截规则，scanRequest 一律放行。
+// image/guard 事件仅作为扩展点保留：外部插件如需自定规则可自行监听。
 
-export function scanRequest(req: ImageRequest, extra: RegExp[] = []): GuardVerdict | void {
-  const text = `${req.prompt}\n${req.negative ?? ''}`
-  for (const re of [...DEFAULT_BLOCK, ...extra]) {
-    if (re.test(text)) return { blocked: true, reason: `guard matched ${re}` }
-  }
+export function scanRequest(_req: ImageRequest, _extra: RegExp[] = []): GuardVerdict | void {
+  return undefined
 }
 
 export const name = 'image-guard'

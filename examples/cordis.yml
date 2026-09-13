@@ -16,7 +16,7 @@
       name: './packages/assets/src/index.ts'
       config:
         workspaceRoot: !!js process.cwd()
-        keepLastTasks: 50
+        keepLastTasks: 0 # 0 = 永不自动删除产物
 
     - id: image-skills
       name: './packages/skills/src/index.ts'

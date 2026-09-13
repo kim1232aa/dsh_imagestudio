@@ -13,11 +13,14 @@ describe('image-ui workbench', () => {
     assert.match(html, /画廊/)
     assert.match(html, /无限画布/)
     assert.match(html, /电商/)
+    assert.match(html, /设置/)
     assert.match(html, /视频/)
     assert.match(html, /文生图/)
     assert.match(html, /图生图/)
     assert.match(html, /反推/)
     assert.match(html, /就这样出图/)
+    assert.match(html, /回对话/)
+    assert.match(html, /href="\/"/)
     assert.match(html, /想方案/)
     assert.match(html, /data-brief/)
     assert.match(html, /cinema-dna-21x9x3/)
@@ -35,11 +38,12 @@ describe('image-ui workbench', () => {
     assert.match(html, /改得动/)
   })
 
-  it('entry script adds a 生图 control without vendor selectors', () => {
+  it('entry script adds 技能台 and yields 生图 to dsh-imagegen when present', () => {
     const js = readFileSync(new URL('../packages/ui/src/entry.js', import.meta.url), 'utf8')
-    assert.match(js, /生图/)
+    assert.match(js, /技能台/)
     assert.match(js, /\/imagestudio/)
-    assert.doesNotMatch(js, /data-dsh-imagegen-session-tabs/)
+    assert.match(js, /data-dsh-imagegen-session-tabs/)
+    assert.doesNotMatch(js, /textContent = ["']生图["']/)
   })
 
   it('image-ui also uses official webserver/index-inject', () => {

@@ -62,6 +62,30 @@ describe('AC-LC cordis lifecycle', () => {
     assert.equal(fiber.state, STATE_PENDING)
     await fiber.dispose()
   })
+
+  it('AC-LC-04 disposing image-tools drops the six image_* names', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-img-unreg-'))
+    try {
+      const host = await bootStudio({
+        workspaceRoot: dir,
+        skillsDir,
+        enabledSkills: ['cinema-dna-21x9x3'],
+        enableXai: false,
+      })
+      assert.equal(host.tools.size, 6)
+      let toolsFiber: { name: string; dispose: () => Promise<void> } | undefined
+      for (const runtime of host.ctx.registry.values()) {
+        for (const fiber of runtime.fibers) {
+          if (fiber.name === 'image-tools') toolsFiber = fiber as never
+        }
+      }
+      assert.ok(toolsFiber)
+      await toolsFiber.dispose()
+      assert.equal(host.tools.size, 0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('AC-TL defineTool', () => {
@@ -97,13 +121,13 @@ describe('AC-TL defineTool', () => {
         enabledSkills: ['cinema-dna-21x9x3'],
         enableXai: false,
       })
-      await assert.rejects(() => host.tools.call('image_skill_plan', {}), /INVALID_ARGS|required/)
+      await assert.rejects(() => host.tools.call('istudio_skill_plan', {}), /INVALID_ARGS|required/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
 
-  it('image_skill_plan compiles cinema-dna and image_generate honors 21:9 lock', async () => {
+  it('istudio_skill_plan compiles cinema-dna and istudio_generate honors 21:9 lock', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-img-plan-'))
     try {
       const host = await bootStudio({
@@ -112,13 +136,13 @@ describe('AC-TL defineTool', () => {
         enabledSkills: ['cinema-dna-21x9x3'],
         enableXai: false,
       })
-      const planned = (await host.tools.call('image_skill_plan', {
+      const planned = (await host.tools.call('istudio_skill_plan', {
         skillId: 'cinema-dna-21x9x3',
         brief: '明代科举舞弊案',
       })) as { planId: string; plan: { shots: Array<{ aspectRatio: string }>; selfCheck: { passed: boolean } } }
       assert.equal(planned.plan.selfCheck.passed, true)
       assert.equal(planned.plan.shots[0].aspectRatio, '21:9')
-      const gen = (await host.tools.call('image_generate', {
+      const gen = (await host.tools.call('istudio_generate', {
         planId: planned.planId,
         n: 1,
       })) as { images: Array<{ width: number; height: number; path: string }> }
@@ -161,11 +185,11 @@ describe('AC-EV cordis waterfall', () => {
         req.prompt = req.prompt + '|obs'
         return next()
       })
-      const planned = (await host.tools.call('image_skill_plan', {
+      const planned = (await host.tools.call('istudio_skill_plan', {
         skillId: 'cinema-dna-21x9x3',
         brief: '明代科举',
       })) as { planId: string }
-      await host.tools.call('image_generate', { planId: planned.planId, n: 1 })
+      await host.tools.call('istudio_generate', { planId: planned.planId, n: 1 })
       assert.ok(seen.includes('obs'))
     } finally {
       await rm(dir, { recursive: true, force: true })

@@ -11,3 +11,5 @@ coverage/
 tmp/
 .jspace/
 testwrite.txt
+jobs.json
+pnpm-lock.yaml

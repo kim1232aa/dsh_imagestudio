@@ -8,7 +8,13 @@ export interface CanvasNode {
   text?: string
   path?: string
   ratio?: string
+  clarity?: string
   n?: number
+  providerId?: string
+  /** 节点显示宽度（四角缩放手柄驱动，高度随内容等比自适应）。 */
+  w?: number
+  /** 图片节点标注框：相对坐标(0-1)，缩放与移动天然跟随。 */
+  marks?: Array<{ x: number; y: number; w: number; h: number; text?: string }>
 }
 
 export interface CanvasEdge {
@@ -104,7 +110,9 @@ export function addNode(
     text: node.text,
     path: node.path,
     ratio: node.ratio,
+    clarity: node.clarity,
     n: node.n,
+    providerId: node.providerId,
   }
   return { ...project, nodes: [...project.nodes, next] }
 }

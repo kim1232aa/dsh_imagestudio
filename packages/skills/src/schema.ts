@@ -73,5 +73,20 @@ export function validatePreset(raw: unknown, dirName: string): SkillPreset {
   if (!Array.isArray(scoring.rubric)) {
     throw new Error('preset.yaml missing required field: scoring.rubric')
   }
+  const known = new Set([
+    'id',
+    'version',
+    'title',
+    'source',
+    'supersededBy',
+    'modes',
+    'constraints',
+    'planFields',
+    'scoring',
+    'variationRules',
+  ])
+  for (const key of Object.keys(p)) {
+    if (!known.has(key)) throw new Error(`unknown field: ${key}`)
+  }
   return p as unknown as SkillPreset
 }

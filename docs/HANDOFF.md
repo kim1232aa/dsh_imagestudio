@@ -4,7 +4,7 @@
 > 本地工作区：`/home/workdir/artifacts/dsh_imagestudio`  
 > 文档版本：v0.2 设计 / 验收（`docs/01-设计文档.md` `docs/02-设计规范.md` `docs/03-验收规范.md`）  
 > 交接时点：2026-09-12  
-> **验收状态：未签字。** 官方 `dsh web` 曾经在本机 3081 打通，P 级 UI 整表未闭环；GitHub `main` 仍缺大量源码。
+> **验收状态：未签字。** 官方 `dsh web` 曾经在本机 3081 打通，P 级 UI 整表未闭环。clone 后请先 `npm ci` 再 `npm test`。
 
 ---
 
@@ -62,10 +62,11 @@ PORT=3080 node --experimental-strip-types scripts/preview.mjs
 ### C. 测试
 
 ```bash
+npm ci
 npm test    # node --test --experimental-strip-types tests/*.test.ts
 ```
 
-最近一次本机：**63/63 绿**（含 AC-UI-08「游戏CG应拒」veto、官方 New Session 文案匹配）。
+离线 mock 套件应全绿。无本机 `ffmpeg` 时视频 / GIF 走内置封装。官方壳 AC-UI-11/12 仍需人工点。
 
 ---
 
@@ -107,11 +108,11 @@ npm test    # node --test --experimental-strip-types tests/*.test.ts
 
 ---
 
-## 5. GitHub `main` 缺口（必须先补）
+## 5. GitHub `main` 缺口
 
-远程目前大约只有：根 README / plugin.ts / cordis.patch.yml / skills/*/preset.yaml / `packages/core` 的部分文件 / `packages/host` 的 stubs / `packages/tools/src/define.ts` / `packages/ui/src/client.js`。
+源码已在仓库里。clone 后若 `npm test` 立刻 `Cannot find package '@deepseek-ai/cordis'`，是没跑 `npm ci`（CI 也曾因此 9 秒失败）。`.npmrc` 固定 `registry.npmjs.org`。
 
-本地已跟踪 116 个文件。clone 远程**跑不起来**。缺的关键路径：
+历史缺口清单（已补，仅作对照）：
 
 ```
 packages/core/src/{types,events,config,pipeline,registry}.ts

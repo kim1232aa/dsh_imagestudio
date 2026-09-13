@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { VideoRequest } from '../../core/src/types.ts'
 import { decodePng, encodePng, type RgbaImage } from '../../compose/src/png.ts'
 import { createFilmStill } from './film.ts'
+import { wrapPngAsMp4 } from './clip.ts'
 
 export function videoSize(aspect: string): { width: number; height: number } {
   const ratio = !aspect || aspect === '自动' || aspect === 'auto' ? '16:9' : aspect
@@ -41,23 +42,40 @@ export async function renderMockVideo(req: VideoRequest, signal?: AbortSignal): 
       await writeFile(join(dir, `frame-${i}.png`), sweepLight(plate, t))
     }
     const rate = (frameCount / durationSec).toFixed(4)
-    await ffmpeg([
-      '-y',
-      '-stream_loop', '-1',
-      '-framerate', rate,
-      '-start_number', '0',
-      '-i', join(dir, 'frame-%d.png'),
-      '-t', String(durationSec),
-      '-an',
-      '-vf', 'fps=12,format=yuv420p',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      out,
-    ], signal)
-    const bytes = await readFile(out)
-    return { bytes, width, height, durationSec }
+    try {
+      await ffmpeg([
+        '-y',
+        '-stream_loop', '-1',
+        '-framerate', rate,
+        '-start_number', '0',
+        '-i', join(dir, 'frame-%d.png'),
+        '-t', String(durationSec),
+        '-an',
+        '-vf', 'fps=12,format=yuv420p',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        out,
+      ], signal)
+      const bytes = await readFile(out)
+      return { bytes, width, height, durationSec }
+    } catch (err) {
+      if (!isMissingFfmpeg(err)) throw err
+      const png = createFilmStill(width, height, req.prompt || 'PREVIEW')
+      return {
+        bytes: wrapPngAsMp4({
+          width,
+          height,
+          durationSec,
+          prompt: req.prompt || 'PREVIEW',
+          png,
+        }),
+        width,
+        height,
+        durationSec,
+      }
+    }
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -91,6 +109,12 @@ function clamp(n: number): number {
 function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return
   throw Object.assign(new Error('Aborted'), { name: 'AbortError' })
+}
+
+export function isMissingFfmpeg(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code
+  const msg = err instanceof Error ? err.message : String(err)
+  return code === 'ENOENT' || /spawn ffmpeg|ffmpeg ENOENT|not found/i.test(msg)
 }
 
 function ffmpeg(args: string[], signal?: AbortSignal): Promise<void> {

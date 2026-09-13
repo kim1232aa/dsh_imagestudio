@@ -30,7 +30,7 @@ export class MockImageProvider implements ImageProvider {
   }
 
   info(): ProviderInfo {
-    return { id: this.id, protocol: 'mock', model: this.model, kinds: ['text-to-image', 'image-to-image', 'describe', 'text-to-video', 'image-to-video'] }
+    return { id: this.id, protocol: 'mock', model: this.model, kinds: ['text-to-image', 'image-to-image', 'describe', 'text-to-video', 'image-to-video'], canMaskEdit: true }
   }
 
   async generate(req: ImageRequest, signal?: AbortSignal): Promise<ImageResult> {

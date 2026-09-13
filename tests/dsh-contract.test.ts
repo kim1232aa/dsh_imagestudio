@@ -53,19 +53,19 @@ describe('AC-CP official DSH plugin contract', () => {
     ]) {
       assert.match(yml, new RegExp(`id:\\s*${id}`), `missing ${id}`)
     }
-    assert.match(yml, /packages\/core\/src\/index\.ts/)
+    assert.match(yml, /packages[/\\]core[/\\]src[/\\]index\.ts/)
     assert.doesNotMatch(yml, /name:\s*'@dsh-imagestudio\//)
   })
 
-  it('AC-TL-01 exactly six model-visible tools named image_<verb>', () => {
+  it('AC-TL-01 exactly six model-visible tools named istudio_<verb>', () => {
     assert.equal(TOOL_NAMES.length, 6)
     assert.deepEqual([...TOOL_NAMES], [
-      'image_skill_plan',
-      'image_generate',
-      'image_edit',
-      'image_describe',
-      'image_compose',
-      'image_assets',
+      'istudio_skill_plan',
+      'istudio_generate',
+      'istudio_edit',
+      'istudio_describe',
+      'istudio_compose',
+      'istudio_assets',
     ])
   })
 

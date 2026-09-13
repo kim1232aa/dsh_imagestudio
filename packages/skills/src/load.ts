@@ -55,7 +55,7 @@ export function loadBundled(enabled?: string[]): LoadedSkill[] {
   return loaded
 }
 
-function detectConflicts(skills: LoadedSkill[]): void {
+export function detectConflicts(skills: LoadedSkill[]): void {
   const poster = skills.filter(
     (s) => s.preset.modes.poster && !s.preset.supersededBy && s.preset.id !== 'cinema-dna-21x9x3',
   )

@@ -133,6 +133,8 @@ export interface ProviderInfo {
   protocol: string
   model: string
   kinds: TaskKind[]
+  /** 是否支持遮罩/局部编辑（配置了编辑模型或协议原生支持）。 */
+  canMaskEdit?: boolean
 }
 
 export interface VideoRequest {

@@ -7,3 +7,5 @@
 - insert:
     - id: image-studio
       name: dsh-imagestudio
+      # Coexists with @dickpy/dsh-imagegen (id: imagegen). Different fiber id,
+      # different tools (image_* vs generate_image), different sidebar label.

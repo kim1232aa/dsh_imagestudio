@@ -125,11 +125,11 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
-  it('AC-TL-20 workbench plan aspect matches image_skill_plan', async () => {
+  it('AC-TL-20 workbench plan aspect matches istudio_skill_plan', async () => {
     const { dir, host } = await withHost()
     try {
       const brief = '明代夜审账房放榜'
-      const viaTool = (await host.tools.call('image_skill_plan', {
+      const viaTool = (await host.tools.call('istudio_skill_plan', {
         skillId: 'cinema-dna-21x9x3',
         brief,
       })) as { plan: { shots: Array<{ aspectRatio: string }> } }
@@ -160,7 +160,7 @@ describe('AC-UI routes on host webServer', () => {
       const listed = await host.web.fetch('GET', '/imagestudio/api/assets')
       const text = listed.text
       assert.match(text, /shot-|studio/)
-      const viaTool = await host.tools.call('image_assets', {})
+      const viaTool = await host.tools.call('istudio_assets', {})
       assert.ok(viaTool)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -224,7 +224,7 @@ describe('AC-UI routes on host webServer', () => {
     try {
       const res = await host.web.fetch('GET', '/imagestudio')
       assert.equal(res.status, 200)
-      for (const label of ['普通生图', '画廊', '无限画布', '电商']) {
+      for (const label of ['普通生图', '画廊', '无限画布', '电商', '设置']) {
         assert.match(res.text, new RegExp(label))
       }
     } finally {
@@ -272,6 +272,21 @@ describe('AC-UI routes on host webServer', () => {
       assert.notEqual(out.blocked, true)
       assert.ok(Array.isArray(out.images) && out.images.length >= 1, JSON.stringify(out))
       assert.ok(mock.calls > before)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC03 upload over 10MB is 413', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const data = Buffer.alloc(10 * 1024 * 1024 + 8, 7).toString('base64')
+      const res = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/upload',
+        JSON.stringify({ filename: 'too-big.png', mime: 'image/png', data }),
+      )
+      assert.equal(res.status, 413)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

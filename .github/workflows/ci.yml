@@ -10,5 +10,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: unit tests (mock provider, no API keys)
+          cache: npm
+      - name: install (cordis + schemastery, mock provider, no API keys)
+        run: npm ci
+      - name: unit tests
         run: node --test --experimental-strip-types tests/*.test.ts

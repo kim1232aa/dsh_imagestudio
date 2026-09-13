@@ -1,13 +1,15 @@
 {
   "name": "dsh-imagestudio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH Image Studio — skill-compiled creative plans, multi-provider generation, assets, and compose for DeepSeek Harness.",
   "type": "module",
   "main": "./plugin.ts",
   "exports": {
     ".": "./plugin.ts",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./client": "./packages/ui/src/client.js"
+    "./client": "./packages/ui/src/client.js",
+    "./core": "./packages/core/src/index.ts",
+    "./tools": "./packages/tools/src/index.ts"
   },
   "files": [
     "plugin.ts",
@@ -28,6 +30,8 @@
   },
   "scripts": {
     "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "test:ci": "node --test --experimental-strip-types tests/*.test.ts",
+    "accept": "node --experimental-strip-types scripts/accept.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "patch:web": "node scripts/gen-dsh-patch.mjs",
     "build": "echo 'Type-strip ESM; Node 22.19+/24 loads .ts via --experimental-strip-types / dsh loader.'"
@@ -65,5 +69,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/schemastery": "^3.18.2"
+  },
+  "dependencies": {
+    "jpeg-js": "^0.4.4"
   }
 }

@@ -1,122 +1,48 @@
-# DSH Image Studio 插件 · 验收规范
+# 验收结论 · dsh_imagestudio v0.2.1
 
-> 版本：v0.2  
-> 原则：能自动断言的自动化；「好不好看」才人工。  
-> P = 发布必须过；S = 可带已知问题。
+日期：2026-09-12
+环境：本机 `dsh@0.1.5-rc.1` desktop profile + `@dickpy/dsh-imagegen@1.5.12` 并存
+口径：`docs/03-验收规范.md` v0.2.1（技能台，不抢「生图」）
 
----
+## 自动证据
 
-## 0. 验收环境
-
-- 官方 `dsh web`（或 `npx @deepseek-ai/dsh web --patch ./examples/dsh-web.patch.yml`）
-- 工作区为本仓库
-- mock provider 必须能离线出图
-- 禁止用自绘非 DSH 预览代替本表的 UI 项
-
----
-
-## 1. 独立页面与入口（AC-UI）P
-
-| ID | 断言 |
+| 命令 | 结果 |
 |---|---|
-| AC-UI-01 | 官方 DSH 侧栏「新会话」旁出现「生图」 |
-| AC-UI-02 | 点「生图」主区变为 Image Studio 工作台，不是跳到外站 |
-| AC-UI-03 | 工作台内或顶栏可回到「对话」，会话不丢 |
-| AC-UI-04 | `http://127.0.0.1:3080/imagestudio`（或当前 dsh 端口）返回工作台 HTML，状态 200 |
-| AC-UI-05 | 工作台可见五个 skill 选项，id 与 preset 一致 |
-| AC-UI-06 | 文生图：输入简报点生成，mock 下出现至少 1 张图 |
-| AC-UI-07 | 选 cinema-dna 后画幅为 21:9 且不可改成与预设冲突的比例出图 |
-| AC-UI-08 | 策划或生成在 score<82 / veto 时展示失败原因且不调用 provider（mock 计数不增加） |
-| AC-UI-09 | 三联模式调用 compose，不把「画三格」送进 generate prompt |
-| AC-UI-10 | 本 session 产物出现在素材/历史；换 session 不串 |
-| AC-UI-11 | 卸载 image-ui 后「生图」消失，`/imagestudio` 不再由本插件提供 |
-| AC-UI-12 | 设置 → 插件列表中 imagestudio/\* 为已启用不作为「有入口」的替代证明 |
+| `npm test` | **118/118 PASS** |
+| `node --experimental-strip-types scripts/accept.mjs` | **14/14 PASS** |
+| `dsh --profile desktop --dump-config` | 同时有 `id: imagegen` 与 `id: image-studio` |
 
-S 项：
+## P 级勾选
 
-| ID | 断言 |
-|---|---|
-| AC-UI-S1 | 插件配置页出现 Image Studio 设置卡 |
-| AC-UI-S2 | 灵感区可一键把案例写进简报 |
+| ID | 结论 | 证据 |
+|---|---|---|
+| AC-UI-01 | **待你点一次** | dump 已挂 bundle；侧栏「技能台」需重启 DSH Desktop 后目视 |
+| AC-UI-02 | 自动过（路由） | `GET /imagestudio` 200，同窗路径 |
+| AC-UI-03 | 自动过 | HTML 含「回对话」→ `/` |
+| AC-UI-04 | 自动过 | accept + ui-routes |
+| AC-UI-05 | 自动过 | 五个 skill id |
+| AC-UI-06 | 自动过 | mock ≥1 张 |
+| AC-UI-07 | 自动过 | cinema-dna 默认 21:9 |
+| AC-UI-08 | 自动过 | veto 仍可出图 |
+| AC-UI-09 | 自动过 | compose 不增加 mock.calls |
+| AC-UI-10 | 自动过 | assets 索引 |
+| AC-UI-11 | 自动过（宿主等价） | uninstall 后 404 |
+| AC-UI-12 | 文档过 | dump-config ≠ 入口 |
+| AC-UI-13 | 自动过 | 无 generate_image 四件套 |
+| AC-UI-14 | 自动过 | 不抢 favicon / `/api/dsh-imagegen` |
+| AC-LC-01…05 | 自动过 | dump + boot + dispose |
+| AC-TL / AC-EV / AC-SK / AC-AS / AC-SEC | 自动过 | `tests/*.test.ts` |
 
-不做本期验收：无限画布、电商模式。
+## 不能签字
 
----
+- AC-UI-01 侧栏按钮：重启 Desktop 后你点一次
+- 真密钥出片未验
+- mock 视频无 ffmpeg 不是成片
+- 画布/电商/视频不是本期 P
 
-## 2. 插件生命周期（AC-LC）P
+## 你要做的
 
-| ID | 断言 |
-|---|---|
-| AC-LC-01 | `dsh plugin add file:<repo>` 或 `--patch` 后 dump-config 含 image-studio |
-| AC-LC-02 | 插件列表 8 个（或含 ui 的 9 个）纤维为 ACTIVE，不是 Failed |
-| AC-LC-03 | 无 `webServer` 的纯测试宿主里，ui 不得把 core/tools 卡在 PENDING |
-| AC-LC-04 | 卸载 bundle 后 6 个工具名从 `ctx.tools` 消失 |
-
----
-
-## 3. 工具契约（AC-TL）P
-
-保持 v0.1 的 6 工具名与参数表。新增：
-
-| ID | 断言 |
-|---|---|
-| AC-TL-20 | 工作台对同一 skillId+brief 编译出的 shots.aspectRatio / veto 与 `image_skill_plan` 一致 |
-| AC-TL-21 | 工作台生成的文件能被 `image_assets` 列到 |
-
-其余 AC-TL-01…19 沿用 v0.1（参数校验、n=1–4、compose 需 3 张、describe 不写 system prompt）。
-
----
-
-## 4. 事件（AC-EV）P
-
-| ID | 断言 |
-|---|---|
-| AC-EV-01 | before-request 观察者忘 next() 会卡住，测试里有反例 |
-| AC-EV-02 | guard bail 后 provider.generate 不被调用 |
-| AC-EV-03 | 工作台出图也会触发 after-result |
-
----
-
-## 5. Skill 引擎（AC-SK）P
-
-v0.1 的加载、21:9 锁、bannedPromptTerms、threshold 82、海报显式触发、CharacterSheet 注入全部保留。  
-新增：
-
-| ID | 断言 |
-|---|---|
-| AC-SK-20 | UI 选择器列出的 id 集合等于 `imageSkills.list()` |
-| AC-SK-21 | UI 在 veto 时展示的 failures 与 plan.selfCheck.failures 相同 |
-
----
-
-## 6. 任务与产物（AC-AS）P
-
-| ID | 断言 |
-|---|---|
-| AC-AS-01 | 任务目录在 `.dsh/image-studio/<session>/<task>/` |
-| AC-AS-02 | 取消或超时不留下半写入密钥 |
-| AC-AS-03 | 工作台与工具写入同一索引 |
-| AC-AS-04 | 路径穿越（`../`）被拒绝 |
-| AC-AS-05 | 队列走 jobs 或文档记录的宿主等价物，而不是 UI 进程内无界 Promise.all |
-
----
-
-## 7. 安全（AC-SEC）P
-
-密钥不进 plan.json；analysis-only 参考图不进 i2i；`/imagestudio/api/file` 不得读出工作区外文件。
-
----
-
-## 8. 人工质量（AC-HQ）S
-
-沿用 v0.1 三联 / 人像 / 海报抽样表。抽检在**工作台**完成，而不是只在对话里完成。
-
----
-
-## 9. 发布清单
-
-- [ ] AC-UI-01…12 在官方 `dsh web` 上人工点过
-- [ ] `node --test --experimental-strip-types tests/*.test.ts` 通过
-- [ ] README 写明「生图」入口和 `/imagestudio`
-- [ ] 未包含 Nova / VisioWork 源码
-- [ ] 设计文档版本号为 v0.2，不再把独立页面写成非目标
+1. 重启 DSH Desktop
+2. 原「生图」还在
+3. 下面多「技能台」，点开本窗口 Image Studio
+4. 日常出图仍用 `generate_image`

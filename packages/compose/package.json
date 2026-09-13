@@ -18,5 +18,8 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1 <5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "jpeg-js": "^0.4.4"
+  }
 }

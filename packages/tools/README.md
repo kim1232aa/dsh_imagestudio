@@ -1,6 +1,6 @@
 # @dsh-imagestudio/dsh-image-tools
 
-模型可见的 6 个工具：`image_skill_plan` / `image_generate` / `image_edit` / `image_describe` / `image_compose` / `image_assets`。
+模型可见的 6 个工具：`istudio_skill_plan` / `istudio_generate` / `istudio_edit` / `istudio_describe` / `istudio_compose` / `istudio_assets`。
 
 Requires: `tools`, `imagegen`, `imageSkills`, `imageAssets`, `imageCompose`
 
@@ -21,5 +21,5 @@ Requires: `tools`, `imagegen`, `imageSkills`, `imageAssets`, `imageCompose`
     limits: { concurrency: 3, perTaskTimeoutMs: 180000, maxImagesPerCall: 4 }
 ```
 
-Tools: image_skill_plan, image_generate, image_edit, image_describe, image_compose, image_assets.
+Tools: istudio_skill_plan, istudio_generate, istudio_edit, istudio_describe, istudio_compose, istudio_assets.
 License: MIT

@@ -5,15 +5,14 @@ import { createPipeline, installBuiltinHooks, runGenerate, type Pipeline } from 
 import { compilePlan, loadSkills, type LoadedSkill } from '../../skills/src/index.ts'
 import { AssetStore } from '../../assets/src/store.ts'
 import { composeTriptych, overlayTitle, readEmbeddedTitle, encodePng, decodePng } from '../../compose/src/index.ts'
-import { scanRequest } from '../../guard/src/index.ts'
 
 export const TOOL_NAMES = [
-  'image_skill_plan',
-  'image_generate',
-  'image_edit',
-  'image_describe',
-  'image_compose',
-  'image_assets',
+  'istudio_skill_plan',
+  'istudio_generate',
+  'istudio_edit',
+  'istudio_describe',
+  'istudio_compose',
+  'istudio_assets',
 ] as const
 
 export interface Studio {
@@ -30,7 +29,7 @@ export async function createStudio(opts: {
 }): Promise<Studio> {
   const pipeline = createPipeline()
   installBuiltinHooks(pipeline)
-  pipeline.bus.on('image/guard', (req: ImageRequest) => scanRequest(req))
+  // 验收红线：无关键词黑名单、无内容审查。image/guard 事件钩子保留为扩展点，默认无任何监听，一律放行。
   const skills = await loadSkills(opts.skillsDir, opts.enabled)
   const store = new AssetStore({ workspaceRoot: opts.workspaceRoot })
   return { pipeline, skills, store, sessionId: 'local' }

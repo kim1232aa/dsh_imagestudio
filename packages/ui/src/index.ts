@@ -3,12 +3,12 @@
  * Serves /imagestudio workbench + JSON API on the official dsh webServer.
  * Original code — pattern inspired by DSH client chrome hooks, not VisioWork source.
  */
-import { readFile, readdir, stat, mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readFile, readdir, stat, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { runGenerateOnContext } from '../../core/src/pipeline.ts'
@@ -18,7 +18,30 @@ import { studioPage } from './studio-page.ts'
 import { defaultProject, placeResultNode, placeVideoResult, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
 import { buildEcomPlan, type EcomPlan } from './ecom-plan.ts'
 import { assertInsideWorkspace } from '../../assets/src/paths.ts'
+import { extForMime, OpenAIImageProvider } from '../../provider-openai/src/index.ts'
 import { PathEscapeError } from '../../core/src/errors.ts'
+import { decodeImage, encodeGif, encodePng, quantizeToSvg } from '../../compose/src/index.ts'
+import { blitRegion, compositeOver, cropRegion, removeBackground } from '../../compose/src/region.ts'
+import { createSolid } from '../../compose/src/png.ts'
+import { readZip, writeZip } from '../../compose/src/zip.ts'
+import {
+  WEB_FILES,
+  type WebFile,
+  applyLineEdits,
+  importAssets,
+  newProjectId,
+  numberLines,
+  parseFileSections,
+  parseLineEdits,
+  readProject,
+  webcloneDir,
+  writeProject,
+} from './webclone.ts'
+import { cacheTemplateImages, fetchTemplateSource, listTemplates, readTemplateAsset } from './templates.ts'
+import { readEmbeddedClip } from '../../provider-mock/src/clip.ts'
+import { isMissingFfmpeg } from '../../provider-mock/src/video.ts'
+
+const MAX_UPLOAD = 10 * 1024 * 1024
 
 export const name = 'image-ui'
 export const inject = ['imagegen', 'imageSkills', 'imageAssets', 'imageCompose']
@@ -92,6 +115,34 @@ function send(res: import('node:http').ServerResponse, status: number, body: unk
   res.end(raw)
 }
 
+interface UiSliceProposal { x: number; y: number; w: number; h: number; label: string }
+
+// 从模型输出里抠出 JSON 数组并逐条校验/裁剪到合法范围。
+// 模型可能裹代码块或带解释文字，只取第一个 '[' 到最后一个 ']' 之间的内容。
+function parseSliceJson(text: string): UiSliceProposal[] {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start < 0 || end <= start) throw new Error('模型输出里没有 JSON 数组')
+  let arr: unknown
+  try {
+    arr = JSON.parse(text.slice(start, end + 1))
+  } catch (err) {
+    throw new Error(`JSON 解析失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!Array.isArray(arr)) throw new Error('模型输出的不是数组')
+  const out: UiSliceProposal[] = []
+  for (const item of arr) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const x = Number(r.x), y = Number(r.y), w = Number(r.w), h = Number(r.h)
+    if (![x, y, w, h].every(Number.isFinite)) continue
+    const cx = Math.max(0, Math.min(0.99, x)), cy = Math.max(0, Math.min(0.99, y))
+    const cw = Math.max(0.005, Math.min(1 - cx, w)), ch = Math.max(0.005, Math.min(1 - cy, h))
+    out.push({ x: cx, y: cy, w: cw, h: ch, label: typeof r.label === 'string' ? r.label.slice(0, 40) : '' })
+  }
+  return out
+}
+
 async function persist(ctx: Context, req: ImageRequest, providerId?: string, signal?: AbortSignal) {
   const out = await runGenerateOnContext(ctx, req, { providerId, signal })
   if ('blocked' in out || 'passed' in out) return out
@@ -100,7 +151,8 @@ async function persist(ctx: Context, req: ImageRequest, providerId?: string, sig
   for (let i = 0; i < out.images.length; i++) {
     const img = out.images[i] as { bytes?: Uint8Array; width: number; height: number; mime?: string; path?: string }
     const bytes = img.bytes ?? new Uint8Array()
-    const name = req.shotId ? `${req.shotId}-${i + 1}.png` : `shot-${i + 1}.png`
+    const ext = extForMime(img.mime)
+    const name = req.shotId ? `${req.shotId}-${i + 1}${ext}` : `shot-${i + 1}${ext}`
     if (bytes.length) images.push(await ctx.imageAssets.writeImage('studio', taskId, name, bytes, img))
     else images.push({ path: img.path, width: img.width, height: img.height, mime: img.mime })
   }
@@ -108,9 +160,47 @@ async function persist(ctx: Context, req: ImageRequest, providerId?: string, sig
   return { taskId, images, providerId: out.providerId, model: out.model, notes: out.notes ?? [] }
 }
 
+interface SavedChannel {
+  id: string
+  protocol?: string
+  model: string
+  videoModel?: string
+  editModel?: string
+  visionModel?: string
+  baseUrl: string
+  apiKeyEnv: string
+}
+
 export function apply(ctx: Context): void {
   const jobStore = new JobStore(ctx.imageAssets.root)
   jobStore.failRunningOnBoot()
+
+  const channelsFile = () => join(ctx.imageAssets.root, 'channels.json')
+  const readSavedChannels = async (): Promise<SavedChannel[]> => {
+    try {
+      const raw = await readFile(channelsFile(), 'utf8')
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  // Restore channels saved through the settings UI in previous runs — they are
+  // real provider registrations, so they must come back after a restart.
+  void readSavedChannels()
+    .then((saved) => {
+      for (const c of saved) {
+        try {
+          if (ctx.imagegen.list().some((p) => p.id === c.id)) continue
+          ctx.imagegen.register(c.id, new OpenAIImageProvider(c))
+        } catch (err) {
+          console.warn('[imagestudio] restore channel failed:', c.id, err)
+        }
+      }
+    })
+    .catch((err) => console.warn('[imagestudio] read channels.json failed:', err))
+
 
   const attach = (webCtx: Context) => {
     const web = (webCtx as Context & { webServer?: WebServer }).webServer
@@ -144,27 +234,46 @@ export function apply(ctx: Context): void {
           }
           if (url.pathname === '/imagestudio/api/assets' && (!req.method || req.method === 'GET')) {
             const index = await ctx.imageAssets.readIndex()
-            const images: Array<{ path: string; mime: string; title: string; session: string; task: string }> = []
+            const images: Array<{ path: string; mime: string; title: string; session: string; task: string; sha256: string }> = []
             for (const [session, tasks] of Object.entries(index)) {
-              for (const task of (tasks as string[]).slice(-8).reverse()) {
+              // 窗口要足够大：只扫末尾几个任务时，新出的视频/GIF 会被
+              // 批量出图的任务量挤出展示范围（实测 18 个任务里排第 4 的视频不显示）。
+              for (const task of (tasks as string[]).slice(-24).reverse()) {
                 const dir = join(ctx.imageAssets.studioDir, session, task)
                 const files = await readdir(dir).catch(() => [])
-                for (const name of files.filter((n) => n.endsWith('.png') || n.endsWith('.mp4'))) {
+              for (const name of files.filter((n) => /\.(png|jpe?g|gif|webp|mp4)$/i.test(n))) {
                   const abs = join(dir, name)
                   const st = await stat(abs).catch(() => null)
                   if (!st || !st.isFile() || st.size <= 0) continue
-                  const mime = name.endsWith('.mp4') ? 'video/mp4' : 'image/png'
+                  const mime = name.endsWith('.mp4')
+                    ? 'video/mp4'
+                    : /\.jpe?g$/i.test(name)
+                      ? 'image/jpeg'
+                      : name.endsWith('.gif')
+                        ? 'image/gif'
+                        : name.endsWith('.webp')
+                          ? 'image/webp'
+                          : 'image/png'
                   images.push({
                     path: join('.dsh/image-studio', session, task, name).replace(/\\/g, '/'),
                     mime,
                     title: name,
                     session,
                     task,
+                    sha256: createHash('sha256').update(await readFile(abs)).digest('hex'),
                   })
                 }
               }
             }
-            send(res, 200, { index, images: images.slice(0, 24) })
+            send(res, 200, { index, images: images.slice(0, 48) })
+            return
+          }
+          if (url.pathname === '/imagestudio/api/storage-info' && (!req.method || req.method === 'GET')) {
+            send(res, 200, {
+              root: resolve(ctx.imageAssets.root),
+              studioDir: resolve(ctx.imageAssets.studioDir),
+              keepLastTasks: ctx.imageAssets.keepLastTasks,
+            })
             return
           }
           if (url.pathname === '/imagestudio/api/file' && (!req.method || req.method === 'GET')) {
@@ -182,8 +291,70 @@ export function apply(ctx: Context): void {
             }
             return
           }
+          if (url.pathname === '/imagestudio/api/templates' && (!req.method || req.method === 'GET')) {
+            // 模板库：多来源清单（内置 + 远程缓存），预览图已改写到本地路由
+            send(res, 200, await listTemplates(ctx.imageAssets.root))
+            return
+          }
+          if (url.pathname === '/imagestudio/api/templates/asset' && (!req.method || req.method === 'GET')) {
+            const f = url.searchParams.get('f') ?? ''
+            try {
+              const { bytes, mime } = await readTemplateAsset(ctx.imageAssets.root, f)
+              res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
+              res.end(bytes)
+            } catch (err) {
+              send(res, 404, { error: err instanceof Error ? err.message : String(err) })
+            }
+            return
+          }
           if (url.pathname === '/imagestudio/api/jobs' && (!req.method || req.method === 'GET')) {
             send(res, 200, { jobs: jobStore.list() })
+            return
+          }
+          // 网页复刻静态预览：/imagestudio/web/<id>/index.html 等，仅白名单文件
+          if (url.pathname === '/imagestudio/api/webclone/project' && (!req.method || req.method === 'GET')) {
+            const id = url.searchParams.get('id') ?? ''
+            if (!/^[a-z0-9-]{4,16}$/.test(id)) {
+              send(res, 400, { error: 'id 不合法' })
+              return
+            }
+            try {
+              const files = await readProject(ctx.imageAssets.root, id)
+              send(res, 200, { id, files, previewUrl: `/imagestudio/web/${id}/index.html` })
+            } catch (err) {
+              send(res, 404, { error: err instanceof Error ? err.message : String(err) })
+            }
+            return
+          }
+          if (url.pathname.startsWith('/imagestudio/web/') && (!req.method || req.method === 'GET')) {
+            const rest = url.pathname.slice('/imagestudio/web/'.length)
+            const seg = rest.split('/')
+            const id = seg[0] || ''
+            const file = seg.slice(1).join('/')
+            const idOk = /^[a-z0-9-]{4,16}$/.test(id)
+            const fileOk = WEB_FILES.includes(file as WebFile) || /^assets\/[a-zA-Z0-9._-]+$/.test(file)
+            if (!idOk || !fileOk) {
+              send(res, 403, { error: '不允许的路径' })
+              return
+            }
+            try {
+              const abs = join(webcloneDir(ctx.imageAssets.root, id), file)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const bytes = await readFile(abs)
+              const mime = file.endsWith('.html')
+                ? 'text/html; charset=utf-8'
+                : file.endsWith('.css')
+                  ? 'text/css; charset=utf-8'
+                  : file.endsWith('.js')
+                    ? 'text/javascript; charset=utf-8'
+                    : file.endsWith('.svg')
+                      ? 'image/svg+xml'
+                      : 'image/png'
+              res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
+              res.end(bytes)
+            } catch (err) {
+              send(res, 404, { error: err instanceof Error ? err.message : String(err) })
+            }
             return
           }
           if (url.pathname === '/imagestudio/api/canvas' && (!req.method || req.method === 'GET')) {
@@ -215,6 +386,10 @@ export function apply(ctx: Context): void {
               send(res, 400, { error: 'empty upload' })
               return
             }
+            if (bytes.length > MAX_UPLOAD) {
+              send(res, 413, { error: '超过大小限制 10MB' })
+              return
+            }
             const dim = pngSize(bytes)
             const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), filename, bytes, {
               width: dim.width,
@@ -227,6 +402,94 @@ export function apply(ctx: Context): void {
           if (req.method === 'POST' && url.pathname.startsWith('/imagestudio/api/')) {
             const raw = await readBody(req)
             const body = raw ? JSON.parse(raw) : {}
+          if (url.pathname === '/imagestudio/api/backup') {
+            const data = body.data
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+              send(res, 400, { error: '备份数据格式不对' })
+              return
+            }
+            const dir = join(ctx.imageAssets.studioDir, 'backups')
+            await mkdir(dir, { recursive: true })
+            const name = `imagestudio-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`
+            const abs = resolve(join(ctx.imageAssets.studioDir, 'backups', name))
+            assertInsideWorkspace(ctx.imageAssets.root, abs)
+            await writeFile(abs, JSON.stringify({ app: 'imagestudio-backup', version: 1, exportedAt: new Date().toISOString(), data }, null, 2))
+            send(res, 200, { ok: true, path: abs })
+            return
+          }
+          // 渠道管理：保存 = 真实注册 provider（不再只是 localStorage 摆设），
+          // 并落盘 channels.json 让重启后仍在。密钥永远只引用环境变量名。
+          if (url.pathname === '/imagestudio/api/channels' && req.method === 'POST') {
+            const id = String(body.id || '').trim()
+            const baseUrl = String(body.baseUrl || '').trim().replace(/\/$/, '')
+            const apiKeyEnv = String(body.apiKeyEnv || 'IMAGE_STUDIO_KEY').trim()
+            const model = String(body.model || '').trim()
+            const videoModel = String(body.videoModel || '').trim()
+            const editModel = String(body.editModel || '').trim()
+            const visionModel = String(body.visionModel || '').trim()
+            if (!id || !baseUrl || !model) {
+              send(res, 400, { error: '渠道 id、地址、模型都是必填' })
+              return
+            }
+            if (!/^https?:\/\//.test(baseUrl)) {
+              send(res, 400, { error: `地址格式不对（应以 http(s):// 开头）：${baseUrl}` })
+              return
+            }
+            if (!process.env[apiKeyEnv]) {
+              send(res, 400, { error: `鉴权问题：环境变量 ${apiKeyEnv} 未设置或为空，请先配置密钥再保存渠道` })
+              return
+            }
+            const provider = new OpenAIImageProvider({ id, model, baseUrl, apiKeyEnv, ...(videoModel ? { videoModel } : {}), ...(editModel ? { editModel } : {}), ...(visionModel ? { visionModel } : {}) })
+            ctx.imagegen.register(id, provider)
+            const saved = await readSavedChannels()
+            const next = saved.filter((c) => c.id !== id).concat([{ id, protocol: 'openai-image', model, ...(videoModel ? { videoModel } : {}), ...(editModel ? { editModel } : {}), ...(visionModel ? { visionModel } : {}), baseUrl, apiKeyEnv }])
+            await writeFile(channelsFile(), JSON.stringify(next, null, 2))
+            send(res, 200, { ok: true, providers: ctx.imagegen.list() })
+            return
+          }
+          if (url.pathname === '/imagestudio/api/key-status' && req.method === 'POST') {
+            const env = String(body.apiKeyEnv || '').trim()
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(env)) {
+              send(res, 400, { error: '环境变量名格式不对' })
+              return
+            }
+            // 只回答"是否已配置"，绝不回传密钥值本身
+            send(res, 200, { env, configured: Boolean(process.env[env]) })
+            return
+          }
+          if (url.pathname === '/imagestudio/api/channels/detect' && req.method === 'POST') {
+            const baseUrl = String(body.baseUrl || '').trim().replace(/\/$/, '')
+            const apiKeyEnv = String(body.apiKeyEnv || 'IMAGE_STUDIO_KEY').trim()
+            if (!/^https?:\/\//.test(baseUrl)) {
+              send(res, 400, { error: `地址格式不对（应以 http(s):// 开头）：${baseUrl || '(空)'}` })
+              return
+            }
+            const key = process.env[apiKeyEnv]
+            if (!key) {
+              send(res, 400, { error: `鉴权问题：环境变量 ${apiKeyEnv} 未设置或为空` })
+              return
+            }
+            try {
+              const upstream = await fetch(`${baseUrl}/models`, { headers: { Authorization: `Bearer ${key}` } })
+              if (!upstream.ok) {
+                send(res, 502, { error: `上游返回 ${upstream.status}：${upstream.status === 401 || upstream.status === 403 ? '密钥鉴权失败' : '请检查地址与渠道状态'}` })
+                return
+              }
+              const payload = (await upstream.json()) as { data?: Array<{ id?: string }> }
+              const ids = (payload.data ?? []).map((m) => String(m.id ?? '')).filter(Boolean)
+              const usable = ids.filter((mid) => {
+                const low = mid.toLowerCase()
+                const media = /image|imagen|imagine|dall|seedream|flux|banana|video|veo|sora|wanx|kling|hailuo/.test(low)
+                const excluded = /embedding|embed|rerank|whisper|tts|moderation|audio/.test(low)
+                return media && !excluded
+              })
+              send(res, 200, { total: ids.length, models: usable })
+            } catch (err) {
+              const e = err as Error & { cause?: Error }
+              send(res, 502, { error: `连不上渠道地址 ${baseUrl}：${[e.message, e.cause?.message].filter(Boolean).join(' ← ')}` })
+            }
+            return
+          }
             if (url.pathname === '/imagestudio/api/plan') {
               const plan = ctx.imageSkills.compile(body.skillId, body.brief, {
                 wantPoster: !!body.wantPoster,
@@ -281,9 +544,11 @@ export function apply(ctx: Context): void {
               return
             }
             if (url.pathname === '/imagestudio/api/video') {
-              const provider = ctx.imagegen.resolve(body.providerId)
-              if (typeof provider.generateVideo !== 'function') {
-                send(res, 400, { error: '当前渠道没有内置视频协议。到设置填视频渠道，不要再装插件包。' })
+              let provider
+              try {
+                provider = ctx.imagegen.resolveCapable(body.providerId, 'video')
+              } catch (err) {
+                send(res, 400, { error: err instanceof Error ? err.message : String(err) })
                 return
               }
               const job = jobStore.create({ kind: 'video', prompt: body.prompt || '' })
@@ -342,6 +607,7 @@ export function apply(ctx: Context): void {
               const reqImg: ImageRequest = {
                 prompt: resolved.prompt || body.prompt || 'canvas',
                 aspectRatio: cfg?.ratio || body.aspectRatio || '1:1',
+                clarity: cfg?.clarity || body.clarity,
                 n: cfg?.n ?? 1,
                 refUsage: resolved.refImages.length ? 'image-to-image' : 'analysis-only',
                 refImages: resolved.refImages.map((path) => ({
@@ -354,7 +620,7 @@ export function apply(ctx: Context): void {
               }
               const job = jobStore.create({ kind: 'image', prompt: reqImg.prompt })
               try {
-                const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
+                const out = await persist(ctx, reqImg, cfg?.providerId || body.providerId, job.controller.signal)
                 jobStore.finish(job.id, 'done')
                 const images = (out as { images?: Array<{ path: string }> }).images || []
                 let next = project
@@ -427,14 +693,23 @@ export function apply(ctx: Context): void {
                     await writeFile(join(dir, `frame-${i}.png`), await readFile(absFrames[i]))
                   }
                   const rate = (absFrames.length / durationSec).toFixed(4)
-                  await runFfmpeg([
-                    '-y',
-                    '-framerate', rate,
-                    '-i', join(dir, 'frame-%d.png'),
-                    '-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
-                    dest,
-                  ], job.controller.signal)
-                  const bytes = await readFile(dest)
+                  let bytes: Buffer
+                  try {
+                    await runFfmpeg([
+                      '-y',
+                      '-framerate', rate,
+                      '-i', join(dir, 'frame-%d.png'),
+                      '-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+                      dest,
+                    ], job.controller.signal)
+                    bytes = await readFile(dest)
+                  } catch (err) {
+                    if (!isMissingFfmpeg(err)) throw err
+                    const frames = []
+                    for (const p of absFrames) frames.push(decodeImage(await readFile(p)))
+                    const delayCs = Math.max(2, Math.round((durationSec * 100) / frames.length))
+                    bytes = Buffer.from(encodeGif(frames, delayCs))
+                  }
                   const taskId = randomUUID()
                   const ref = await ctx.imageAssets.writeImage('studio', taskId, 'shot.gif', bytes, {
                     width: images[0]?.width || 0,
@@ -476,8 +751,18 @@ export function apply(ctx: Context): void {
                 const dir = await mkdtemp(join(tmpdir(), 'dsh-frame-'))
                 const dest = join(dir, 'frame.png')
                 try {
-                  await runFfmpeg(['-y', '-ss', String(t), '-i', abs, '-frames:v', '1', dest])
-                  const bytes = await readFile(dest)
+                  let bytes: Buffer
+                  try {
+                    await runFfmpeg(['-y', '-ss', String(t), '-i', abs, '-frames:v', '1', dest])
+                    bytes = await readFile(dest)
+                  } catch (err) {
+                    if (!isMissingFfmpeg(err)) throw err
+                    const raw = await readFile(abs)
+                    const clip = readEmbeddedClip(raw)
+                    if (clip) bytes = Buffer.from(clip.png)
+                    else if (raw[0] === 0x89 && raw[1] === 0x50) bytes = raw
+                    else throw err
+                  }
                   const dim = pngSize(bytes)
                   const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), 'frame.png', bytes, {
                     width: dim.width,
@@ -515,12 +800,502 @@ export function apply(ctx: Context): void {
               send(res, 200, await persist(ctx, reqImg, body.providerId))
               return
             }
+            // 局部重绘：整图送上游编辑，返回后只把框内区域贴回原图。
+            // 框外像素与原图逐位一致，框线只存在于坐标参数，不进像素。
+            if (url.pathname === '/imagestudio/api/edit-region') {
+              const rel = String(body.path || '')
+              const box = body.box as { x: number; y: number; w: number; h: number } | undefined
+              const prompt = String(body.prompt || '').trim()
+              if (!rel || !box || !prompt) {
+                send(res, 400, { error: 'path、box、prompt 都是必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const originalBytes = new Uint8Array(await readFile(abs))
+              const original = decodeImage(originalBytes)
+              const bx = {
+                x: Math.max(0, Math.round(box.x)),
+                y: Math.max(0, Math.round(box.y)),
+                w: Math.max(1, Math.round(box.w)),
+                h: Math.max(1, Math.round(box.h)),
+              }
+              if (bx.x + bx.w > original.width || bx.y + bx.h > original.height) {
+                send(res, 400, { error: `标注框超出图片范围（图 ${original.width}x${original.height}）` })
+                return
+              }
+              const provider = ctx.imagegen.resolveCapable(body.providerId, 'generate')
+              if (!provider.info().canMaskEdit) {
+                send(res, 400, { error: `渠道 ${provider.id}（${provider.info().protocol}）不支持遮罩/局部编辑，请在选择器里换支持的渠道` })
+                return
+              }
+              const edited = await provider.generate({
+                prompt,
+                aspectRatio: '自动',
+                n: 1,
+                refUsage: 'image-to-image',
+                refImages: [{ path: rel, width: original.width, height: original.height, mime: 'image/png', sha256: '' }],
+              })
+              const editedBytes = (edited.images[0] as { bytes?: Uint8Array } | undefined)?.bytes
+              if (!editedBytes?.length) throw new Error('上游未返回图片字节')
+              const editedImg = decodeImage(editedBytes)
+              blitRegion(original, editedImg, bx)
+              const png = encodePng(original)
+              const taskId = randomUUID()
+              const ref = await ctx.imageAssets.writeImage('studio', taskId, 'region-edit.png', png, {
+                width: original.width,
+                height: original.height,
+                mime: 'image/png',
+              })
+              send(res, 200, { taskId, images: [ref], providerId: edited.providerId, model: edited.model })
+              return
+            }
+            // 移除背景：纯本地算法（边缘泛洪），不碰上游，产出带透明通道 PNG。
+            if (url.pathname === '/imagestudio/api/remove-bg') {
+              const rel = String(body.path || '')
+              if (!rel) {
+                send(res, 400, { error: 'path 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const decoded = decodeImage(new Uint8Array(await readFile(abs)))
+              const tolerance = Math.max(0, Math.min(128, Number(body.tolerance) || 32))
+              const cut = removeBackground(decoded, tolerance)
+              const png = encodePng(cut)
+              const taskId = randomUUID()
+              const ref = await ctx.imageAssets.writeImage('studio', taskId, 'no-bg.png', png, {
+                width: cut.width,
+                height: cut.height,
+                mime: 'image/png',
+              })
+              send(res, 200, { taskId, images: [ref], local: true })
+              return
+            }
+            // 切片包导出：原图 + 每切片裁剪 PNG + manifest.json 打成 ZIP。
+            if (url.pathname === '/imagestudio/api/ui-export') {
+              const rel = String(body.path || '')
+              const slices = Array.isArray(body.slices) ? body.slices : []
+              if (!rel || !slices.length) {
+                send(res, 400, { error: 'path 与 slices 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const rawBytes = new Uint8Array(await readFile(abs))
+              const decoded = decodeImage(rawBytes)
+              const entries = [{ name: `original${rel.endsWith('.jpg') || rel.endsWith('.jpeg') ? '.jpg' : '.png'}`, data: rawBytes }]
+              const manifestSlices = []
+              for (let i = 0; i < slices.length; i++) {
+                const s = slices[i] as { x: number; y: number; w: number; h: number; label?: string; radius?: unknown }
+                const box = {
+                  x: s.x * decoded.width,
+                  y: s.y * decoded.height,
+                  w: s.w * decoded.width,
+                  h: s.h * decoded.height,
+                }
+                const crop = cropRegion(decoded, box)
+                const name = `slice-${String(i + 1).padStart(2, '0')}.png`
+                entries.push({ name, data: encodePng(crop) })
+                manifestSlices.push({
+                  x: s.x, y: s.y, w: s.w, h: s.h,
+                  label: typeof s.label === 'string' ? s.label : '',
+                  radius: s.radius ?? { tl: 0, tr: 0, br: 0, bl: 0 },
+                  file: name,
+                  width: crop.width,
+                  height: crop.height,
+                })
+              }
+              const manifest = {
+                format: 'imagestudio-ui-slices@1',
+                kind: body.kind === 'full' ? 'full' : 'slices',
+                source: rel,
+                image: entries[0].name,
+                naturalWidth: decoded.width,
+                naturalHeight: decoded.height,
+                slices: manifestSlices,
+              }
+              // 完整设计包：切片处理产物 + 网页复刻项目一起打包
+              if (body.kind === 'full') {
+                for (let i = 0; i < slices.length; i++) {
+                  const variants = (slices[i] as { variants?: Record<string, string> }).variants
+                  if (!variants) continue
+                  for (const [mode, vpath] of Object.entries(variants)) {
+                    try {
+                      const vabs = join(ctx.imageAssets.root, String(vpath))
+                      assertInsideWorkspace(ctx.imageAssets.root, vabs)
+                      const vbytes = new Uint8Array(await readFile(vabs))
+                      const ext = String(vpath).split('.').pop() || 'png'
+                      entries.push({ name: `variants/slice-${String(i + 1).padStart(2, '0')}.${mode}.${ext}`, data: vbytes })
+                    } catch (err) {
+                      manifestSlices[i].variantErrors = manifestSlices[i].variantErrors || []
+                      manifestSlices[i].variantErrors.push(`${mode}: ${err instanceof Error ? err.message : String(err)}`)
+                    }
+                  }
+                }
+                const webId = String(body.webId || '')
+                if (/^[a-z0-9-]{4,16}$/.test(webId)) {
+                  try {
+                    const project = await readProject(ctx.imageAssets.root, webId)
+                    entries.push({ name: 'web/index.html', data: new TextEncoder().encode(project.html) })
+                    entries.push({ name: 'web/style.css', data: new TextEncoder().encode(project.css) })
+                    entries.push({ name: 'web/script.js', data: new TextEncoder().encode(project.js) })
+                    ;(manifest as Record<string, unknown>).webId = webId
+                  } catch (err) {
+                    ;(manifest as Record<string, unknown>).webError = err instanceof Error ? err.message : String(err)
+                  }
+                }
+              }
+              entries.push({ name: 'manifest.json', data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) })
+              const zip = writeZip(entries)
+              const taskId = randomUUID()
+              const prefix = body.kind === 'full' ? 'ui-design-full' : 'ui-slices'
+              const outRel = join('.dsh', 'image-studio', 'exports', `${prefix}-${taskId}.zip`)
+              const outAbs = join(ctx.imageAssets.root, outRel)
+              assertInsideWorkspace(ctx.imageAssets.root, outAbs)
+              await mkdir(join(ctx.imageAssets.root, '.dsh', 'image-studio', 'exports'), { recursive: true })
+              await writeFile(outAbs, zip)
+              send(res, 200, { path: outRel.replace(/\\/g, '/'), slices: manifestSlices.length, bytes: zip.length })
+              return
+            }
+            // 切片包还原：解 ZIP，原图回收入库，切片定义原样还给编辑器。
+            if (url.pathname === '/imagestudio/api/ui-import') {
+              const rel = String(body.path || '')
+              if (!rel) {
+                send(res, 400, { error: 'path 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const entries = readZip(new Uint8Array(await readFile(abs)))
+              const manifestEntry = entries.find((e) => e.name === 'manifest.json')
+              if (!manifestEntry) {
+                send(res, 400, { error: '包里没有 manifest.json，不是切片包' })
+                return
+              }
+              const manifest = JSON.parse(new TextDecoder().decode(manifestEntry.data)) as {
+                format?: string
+                image?: string
+                slices?: Array<{ x: number; y: number; w: number; h: number; label?: string; radius?: unknown }>
+              }
+              if (manifest.format !== 'imagestudio-ui-slices@1') {
+                send(res, 400, { error: `不认识的切片包格式：${manifest.format ?? '(无 format 字段)'}` })
+                return
+              }
+              const imgEntry = entries.find((e) => e.name === manifest.image)
+              if (!imgEntry) {
+                send(res, 400, { error: `包里缺原图 ${manifest.image}` })
+                return
+              }
+              const sniffed = decodeImage(imgEntry.data)
+              const taskId = randomUUID()
+              const ref = await ctx.imageAssets.writeImage('studio', taskId, 'restored.png', encodePng(sniffed), {
+                width: sniffed.width,
+                height: sniffed.height,
+                mime: 'image/png',
+              })
+              send(res, 200, {
+                path: ref.path,
+                width: ref.width,
+                height: ref.height,
+                slices: (manifest.slices ?? []).map((s, i) => ({
+                  id: `slice-restored-${i + 1}`,
+                  x: s.x, y: s.y, w: s.w, h: s.h,
+                  label: s.label ?? '',
+                  radius: s.radius ?? { tl: 0, tr: 0, br: 0, bl: 0 },
+                })),
+              })
+              return
+            }
+            if (url.pathname === '/imagestudio/api/templates/fetch') {
+              // 在线更新远程清单：由宿主抓取，浏览器不直连外网
+              const url2 = String(body.url || '').trim()
+              if (!url2) {
+                send(res, 400, { error: 'url 必填' })
+                return
+              }
+              try {
+                send(res, 200, await fetchTemplateSource(ctx.imageAssets.root, url2))
+              } catch (err) {
+                send(res, 502, { error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            if (url.pathname === '/imagestudio/api/templates/cache') {
+              // 离线缓存远程预览图
+              send(res, 200, await cacheTemplateImages(ctx.imageAssets.root))
+              return
+            }
             if (url.pathname === '/imagestudio/api/describe') {
               const text = await ctx.imagegen.describe(
                 (body.assets ?? []).map((path: string) => ({ path })),
                 body.instruction,
               )
               send(res, 200, { text })
+              return
+            }
+            // UI 设计模式：AI 提议切片。模型按严格 JSON 输出，解析失败自动重试一次；
+            // 两次都失败则带原因报错（验收硬条目）。
+            if (url.pathname === '/imagestudio/api/ui-slices') {
+              const rel = String(body.path || '')
+              if (!rel) {
+                send(res, 400, { error: 'path 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const instruction = '这是一张 UI 设计稿。找出可以切成独立素材的区域（图标、按钮、卡片、插图、头像、Logo、装饰图等）。'
+                + '只输出一个 JSON 数组，不要任何其他文字、不要用代码块包裹。'
+                + '每项格式 {"x":0.0,"y":0.0,"w":0.0,"h":0.0,"label":"中文名"}，坐标为 0 到 1 的相对值：x,y 是左上角，w,h 是宽高。'
+                + '区域不要互相重叠，最多 12 个。'
+              let lastErr = ''
+              let done = false
+              for (let attempt = 0; attempt < 2 && !done; attempt++) {
+                try {
+                  const text = await ctx.imagegen.describe(
+                    [{ path: rel }],
+                    instruction + (attempt ? '上一次你没有按格式输出。这次只输出 JSON 数组本身。' : ''),
+                  )
+                  const slices = parseSliceJson(String(text))
+                  if (!slices.length) throw new Error('模型没有给出任何有效切片区域')
+                  send(res, 200, { slices, attempts: attempt + 1 })
+                  done = true
+                } catch (err) {
+                  lastErr = err instanceof Error ? err.message : String(err)
+                }
+              }
+              if (!done) send(res, 502, { error: `AI 切片提议失败（已自动重试一次）：${lastErr}` })
+              return
+            }
+            // 四种素材处理：算法抠透明 / AI 抠透明 / 算法转 SVG / AI 重绘 SVG。
+            // 每种处理结果独立存文件、客户端记独立字段，撤销互不覆盖。
+            if (url.pathname === '/imagestudio/api/ui-process') {
+              const rel = String(body.path || '')
+              const mode = String(body.mode || '')
+              const s = body.slice as { x: number; y: number; w: number; h: number } | undefined
+              if (!rel || !s || !['algo-alpha', 'ai-alpha', 'algo-svg', 'ai-svg'].includes(mode)) {
+                send(res, 400, { error: 'path、slice 必填，mode 限 algo-alpha/ai-alpha/algo-svg/ai-svg' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const decoded = decodeImage(new Uint8Array(await readFile(abs)))
+              const crop = cropRegion(decoded, {
+                x: s.x * decoded.width,
+                y: s.y * decoded.height,
+                w: s.w * decoded.width,
+                h: s.h * decoded.height,
+              })
+              const taskId = randomUUID()
+              const writeAsset = async (name: string, bytes: Uint8Array, meta: Record<string, unknown>) => {
+                const dir = join(ctx.imageAssets.root, '.dsh', 'image-studio', 'studio', taskId)
+                await mkdir(dir, { recursive: true })
+                await writeFile(join(dir, name), bytes)
+                return { path: `.dsh/image-studio/studio/${taskId}/${name}`, ...meta }
+              }
+              if (mode === 'algo-alpha') {
+                const cut = removeBackground(crop, Math.max(0, Math.min(128, Number(body.tolerance) || 32)))
+                const out = await writeAsset('algo-alpha.png', encodePng(cut), { width: cut.width, height: cut.height, mime: 'image/png' })
+                send(res, 200, { mode, ...out, local: true })
+                return
+              }
+              if (mode === 'algo-svg') {
+                const svg = quantizeToSvg(crop, Math.max(2, Math.min(32, Number(body.colors) || 12)))
+                const out = await writeAsset('algo.svg', new TextEncoder().encode(svg), { width: crop.width, height: crop.height, mime: 'image/svg+xml' })
+                send(res, 200, { mode, ...out, local: true, colors: (svg.match(/<g fill=/g) || []).length })
+                return
+              }
+              // AI 类：抠透明走编辑模型，重绘 SVG 走视觉模型
+              if (mode === 'ai-alpha') {
+                const cropRef = await writeAsset('ai-alpha-src.png', encodePng(crop), { width: crop.width, height: crop.height, mime: 'image/png' })
+                const provider = ctx.imagegen.resolveCapable(undefined, 'generate')
+                const edited = await provider.generate({
+                  prompt: 'Cut out the main subject of this image cleanly. Transparent background, no shadow, no border. Return the subject only.',
+                  aspectRatio: '自动',
+                  n: 1,
+                  refUsage: 'image-to-image',
+                  refImages: [{ path: cropRef.path, width: crop.width, height: crop.height, mime: 'image/png', sha256: '' }],
+                })
+                const bytes = (edited.images[0] as { bytes?: Uint8Array } | undefined)?.bytes
+                if (!bytes?.length) throw new Error('上游未返回图片字节')
+                const sniffed = decodeImage(bytes)
+                const hasAlpha = (() => { for (let i = 3; i < sniffed.data.length; i += 4) if (sniffed.data[i] < 250) return true; return false })()
+                const out = await writeAsset('ai-alpha.png', encodePng(sniffed), { width: sniffed.width, height: sniffed.height, mime: 'image/png' })
+                send(res, 200, {
+                  mode, ...out,
+                  providerId: edited.providerId, model: edited.model,
+                  alphaDetected: hasAlpha,
+                  note: hasAlpha ? undefined : '上游返回不含透明像素（该编辑模型可能不支持透明通道），已如实保存原样',
+                })
+                return
+              }
+              // ai-svg：视觉模型看图重写为 SVG 源码，提取失败自动重试一次
+              const cropRef = await writeAsset('ai-svg-src.png', encodePng(crop), { width: crop.width, height: crop.height, mime: 'image/png' })
+              const svgInstruction = '把这张图重绘成 SVG 矢量图。只输出 SVG 源码本身（从 <svg 到 </svg>），不要任何解释、不要用代码块包裹。用简单的 path/rect/circle 逼近主体形状与配色。'
+              let svgText = ''
+              let lastErr = ''
+              for (let attempt = 0; attempt < 2 && !svgText; attempt++) {
+                try {
+                  const text = String(await ctx.imagegen.describe([{ path: cropRef.path }], svgInstruction + (attempt ? '上一次输出里没有 SVG。这次只输出 <svg> 源码。' : '')))
+                  const m = text.match(/<svg[\s\S]*<\/svg>/)
+                  if (!m) throw new Error('模型输出里没有 <svg> 源码')
+                  svgText = m[0]
+                } catch (err) {
+                  lastErr = err instanceof Error ? err.message : String(err)
+                }
+              }
+              if (!svgText) {
+                send(res, 502, { error: `AI 重绘 SVG 失败（已自动重试一次）：${lastErr}` })
+                return
+              }
+              const out = await writeAsset('ai-redraw.svg', new TextEncoder().encode(svgText), { width: crop.width, height: crop.height, mime: 'image/svg+xml' })
+              send(res, 200, { mode, ...out })
+              return
+            }
+            // 背景填充：一次产出「本地合成」（抠透明+纯色底 alpha-over）与
+            // 「AI 原图」（编辑模型按提示词重填背景）两版，AI 版失败如实带原因。
+            if (url.pathname === '/imagestudio/api/ui-fill-bg') {
+              const rel = String(body.path || '')
+              const s = body.slice as { x: number; y: number; w: number; h: number } | undefined
+              if (!rel || !s) {
+                send(res, 400, { error: 'path 与 slice 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const decoded = decodeImage(new Uint8Array(await readFile(abs)))
+              const crop = cropRegion(decoded, {
+                x: s.x * decoded.width,
+                y: s.y * decoded.height,
+                w: s.w * decoded.width,
+                h: s.h * decoded.height,
+              })
+              const colorHex = /^#[0-9a-fA-F]{6}$/.test(String(body.color || '')) ? String(body.color) : '#ffffff'
+              const cr = parseInt(colorHex.slice(1, 3), 16), cg = parseInt(colorHex.slice(3, 5), 16), cb = parseInt(colorHex.slice(5, 7), 16)
+              const taskId = randomUUID()
+              const writeAsset2 = async (name: string, bytes: Uint8Array, meta: Record<string, unknown>) => {
+                const dir = join(ctx.imageAssets.root, '.dsh', 'image-studio', 'studio', taskId)
+                await mkdir(dir, { recursive: true })
+                await writeFile(join(dir, name), bytes)
+                return { path: `.dsh/image-studio/studio/${taskId}/${name}`, ...meta }
+              }
+              // 本地合成版
+              const cut = removeBackground(crop, 32)
+              const base = createSolid(crop.width, crop.height, [cr, cg, cb, 255])
+              compositeOver(base, cut)
+              const localRef = await writeAsset2('fill-local.png', encodePng(base), { width: base.width, height: base.height, mime: 'image/png' })
+              // AI 原图版（失败不拖垮本地版）
+              let aiRef: Record<string, unknown> | null = null
+              let aiError = ''
+              try {
+                const cropRef = await writeAsset2('fill-ai-src.png', encodePng(crop), { width: crop.width, height: crop.height, mime: 'image/png' })
+                const provider = ctx.imagegen.resolveCapable(undefined, 'generate')
+                const edited = await provider.generate({
+                  prompt: `Keep the main subject of this image exactly as is. Replace the background with: ${String(body.prompt || 'a clean solid ' + colorHex + ' background')}.`,
+                  aspectRatio: '自动',
+                  n: 1,
+                  refUsage: 'image-to-image',
+                  refImages: [{ path: cropRef.path, width: crop.width, height: crop.height, mime: 'image/png', sha256: '' }],
+                })
+                const bytes = (edited.images[0] as { bytes?: Uint8Array } | undefined)?.bytes
+                if (!bytes?.length) throw new Error('上游未返回图片字节')
+                const sniffed = decodeImage(bytes)
+                aiRef = await writeAsset2('fill-ai.png', encodePng(sniffed), { width: sniffed.width, height: sniffed.height, mime: 'image/png', providerId: edited.providerId, model: edited.model })
+              } catch (err) {
+                aiError = err instanceof Error ? err.message : String(err)
+              }
+              send(res, 200, { local: localRef, ai: aiRef, aiError: aiError || undefined })
+              return
+            }
+            // 网页复刻：产出 index.html / style.css / script.js 三文件 + 只读 assets。
+            // 解析失败自动重试一次；usage 来自视觉模型真实返回。
+            if (url.pathname === '/imagestudio/api/webclone/start') {
+              const rel = String(body.path || '')
+              if (!rel) {
+                send(res, 400, { error: 'path 必填' })
+                return
+              }
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.root, abs)
+              const assets = Array.isArray(body.assets) ? body.assets.map(String) : []
+              for (const p of assets) assertInsideWorkspace(ctx.imageAssets.root, join(ctx.imageAssets.root, p))
+              const id = newProjectId()
+              const imported = assets.length ? await importAssets(ctx.imageAssets.root, id, assets) : []
+              const assetNote = imported.length
+                ? `可用的本地素材（写在 assets/ 目录，直接引用相对路径）：${imported.join(', ')}`
+                : '没有本地素材可用，全部用 CSS 绘制。'
+              const instruction = '把这张 UI 设计稿复刻成静态网页。产出恰好三个文件，用分块标记输出：\n'
+                + '===FILE: index.html===\n（完整 HTML，用 <link rel="stylesheet" href="style.css"> 与 <script src="script.js"></script> 引用另外两个文件）\n'
+                + '===FILE: style.css===\n（完整 CSS）\n'
+                + '===FILE: script.js===\n（交互 JS，没有交互就留一行注释）\n'
+                + assetNote + '\n'
+                + '不要输出任何其他解释文字。' + (body.brief ? `\n页面要求：${String(body.brief).slice(0, 300)}` : '')
+              let files: { html: string; css: string; js: string } | null = null
+              let lastErr = ''
+              for (let attempt = 0; attempt < 2 && !files; attempt++) {
+                try {
+                  const text = String(await ctx.imagegen.describe([{ path: rel }], instruction + (attempt ? '\n上一次输出缺文件分块，这次严格按 ===FILE: 名字=== 输出三个文件。' : '')))
+                  files = parseFileSections(text)
+                  if (!files) throw new Error('模型输出里没有凑齐三个 ===FILE:=== 分块')
+                } catch (err) {
+                  lastErr = err instanceof Error ? err.message : String(err)
+                }
+              }
+              if (!files) {
+                send(res, 502, { error: `网页复刻生成失败（已自动重试一次）：${lastErr}` })
+                return
+              }
+              await writeProject(ctx.imageAssets.root, id, files)
+              send(res, 200, {
+                id,
+                files,
+                assets: imported,
+                previewUrl: `/imagestudio/web/${id}/index.html`,
+                usage: ctx.imagegen.lastDescribeUsage,
+              })
+              return
+            }
+            // 按行编辑：模型只准输出 @@ start-end 块，整篇重写会被拒绝。
+            if (url.pathname === '/imagestudio/api/webclone/edit') {
+              const id = String(body.id || '')
+              const file = String(body.file || '') as WebFile
+              const instruction = String(body.instruction || '').trim()
+              if (!/^[a-z0-9-]{4,16}$/.test(id) || !WEB_FILES.includes(file) || !instruction) {
+                send(res, 400, { error: 'id、file（index.html/style.css/script.js）、instruction 必填' })
+                return
+              }
+              if (file.startsWith('assets/')) {
+                send(res, 400, { error: 'assets 是只读素材区，不能编辑' })
+                return
+              }
+              const project = await readProject(ctx.imageAssets.root, id)
+              const current = file === 'index.html' ? project.html : file === 'style.css' ? project.css : project.js
+              const editInstruction = '下面是文件 ' + file + ' 的当前内容（带行号）：\n' + numberLines(current) + '\n\n'
+                + '修改要求：' + instruction + '\n'
+                + '只输出若干行编辑块，格式：\n@@ 起始行-结束行\n新的行内容（可多行）\n'
+                + '不要输出完整文件，不要解释。没有要改的就输出 @@ 0-0 空块。'
+              let applied: { content: string; changed: number } | null = null
+              let lastErr = ''
+              for (let attempt = 0; attempt < 2 && !applied; attempt++) {
+                try {
+                  const text = String(await ctx.imagegen.describe([], editInstruction + (attempt ? '\n上一次你没按 @@ 格式输出，这次只输出行编辑块。' : '')))
+                  const edits = parseLineEdits(text)
+                  if (!edits.length) throw new Error('模型没有输出任何 @@ 行编辑块（拒绝整篇重写）')
+                  applied = applyLineEdits(current, edits)
+                } catch (err) {
+                  lastErr = err instanceof Error ? err.message : String(err)
+                }
+              }
+              if (!applied) {
+                send(res, 502, { error: `按行编辑失败（已自动重试一次）：${lastErr}` })
+                return
+              }
+              const next = { ...project }
+              if (file === 'index.html') next.html = applied.content
+              else if (file === 'style.css') next.css = applied.content
+              else next.js = applied.content
+              await writeProject(ctx.imageAssets.root, id, next)
+              send(res, 200, { file, content: applied.content, changedLines: applied.changed, usage: ctx.imagegen.lastDescribeUsage })
               return
             }
             if (url.pathname === '/imagestudio/api/compose') {
@@ -554,16 +1329,6 @@ export function apply(ctx: Context): void {
       },
     })
 
-    const faviconSvg =
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="#e8e4d4"/></svg>'
-    const disposeFav = web.register({
-      kind: 'exact',
-      path: '/favicon.ico',
-      handler: async (_req, res) => {
-        send(res, 200, faviconSvg, 'image/svg+xml; charset=utf-8')
-      },
-    })
-
     const scriptTag = '<script src="/imagestudio/entry.js" defer></script>'
     let disposeTap: (() => void) | undefined
     if (typeof web.tapIndex === 'function') {
@@ -578,13 +1343,23 @@ export function apply(ctx: Context): void {
     }
     const disposeInject = typeof ctx.on === 'function' ? ctx.on('webserver/index-inject', injectRow) : undefined
 
-    const slots = webCtx as Context & {
-      slot?: (name: string, opts: Record<string, unknown>, render?: () => string) => () => void
-    }
     let disposeSlot: (() => void) | undefined
-    if (typeof slots.slot === 'function') {
+    // `slot` is not in this callback's inject list, so even reading the
+    // property throws through the cordis proxy. Guard the access itself.
+    let slotFn: unknown
+    try {
+      slotFn = (webCtx as unknown as Record<string, unknown>).slot
+    } catch {
+      slotFn = undefined
+    }
+    if (typeof slotFn === 'function') {
       try {
-        disposeSlot = slots.slot('sidebar.panellist', { id: 'imagestudio', title: '生图', href: '/imagestudio' }, () => '')
+        disposeSlot = (slotFn as (name: string, opts: Record<string, unknown>, render?: () => string) => () => void).call(
+          webCtx,
+          'sidebar.panellist',
+          { id: 'imagestudio', title: '技能台', href: '/imagestudio' },
+          () => '',
+        )
       } catch {
         disposeSlot = undefined
       }
@@ -593,7 +1368,6 @@ export function apply(ctx: Context): void {
     ctx.effect(() => {
       return () => {
         disposePage()
-        disposeFav()
         disposeTap?.()
         disposeInject?.()
         disposeSlot?.()

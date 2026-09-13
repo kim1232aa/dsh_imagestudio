@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -114,7 +114,7 @@ describe('AC-TL remaining', () => {
         enabledSkills: ['cinema-dna-21x9x3'],
         enableXai: false,
       })
-      await assert.rejects(() => host.tools.call('image_generate', { prompt: 'cat', n: 'three' }), /INVALID_ARGS|invalid arguments|must be/)
+      await assert.rejects(() => host.tools.call('istudio_generate', { prompt: 'cat', n: 'three' }), /INVALID_ARGS|invalid arguments|must be/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -129,7 +129,7 @@ describe('AC-TL remaining', () => {
         enabledSkills: ['cinema-dna-21x9x3'],
         enableXai: false,
       })
-      await assert.rejects(() => host.tools.call('image_generate', { prompt: 'cat', n: 99 }), /1-4/)
+      await assert.rejects(() => host.tools.call('istudio_generate', { prompt: 'cat', n: 99 }), /1-4/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -161,7 +161,7 @@ describe('AC-TL remaining', () => {
         enableXai: false,
       })
       host.ctx.on('image/guard', () => ({ blocked: true, reason: 'policy' }))
-      const out = (await host.tools.call('image_generate', { prompt: 'a cat', n: 1 })) as {
+      const out = (await host.tools.call('istudio_generate', { prompt: 'a cat', n: 1 })) as {
         blocked?: boolean
         reason?: string
       }
@@ -212,11 +212,11 @@ describe('AC-AS remaining', () => {
         enabledSkills: ['cinema-dna-21x9x3'],
         enableXai: false,
       })
-      const planned = (await host.tools.call('image_skill_plan', {
+      const planned = (await host.tools.call('istudio_skill_plan', {
         skillId: 'cinema-dna-21x9x3',
         brief: '明代科举',
       })) as { planId: string }
-      const gen = (await host.tools.call('image_generate', { planId: planned.planId, n: 1 })) as {
+      const gen = (await host.tools.call('istudio_generate', { planId: planned.planId, n: 1 })) as {
         taskId: string
         images: Array<{ path: string }>
       }
@@ -256,6 +256,61 @@ describe('AC-AS remaining', () => {
       assert.equal(blob.includes('ghost'), false)
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('AC-STORE-7D default keepLastTasks=0 never auto-deletes on prune', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-store7d-'))
+    try {
+      const store = new AssetStore({ workspaceRoot: dir })
+      assert.equal(store.keepLastTasks, 0)
+      for (let i = 0; i < 5; i++) {
+        await store.writeImage('s', `task-${i}`, 'shot-1.png', new Uint8Array([i, 2, 3, 4]), { width: 1, height: 1 })
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      await store.prune()
+      const index = await store.readIndex()
+      assert.deepEqual([...(index['s'] ?? [])].sort(), ['task-0', 'task-1', 'task-2', 'task-3', 'task-4'])
+      for (let i = 0; i < 5; i++) {
+        const st = await stat(join(dir, '.dsh/image-studio/s', `task-${i}`, 'shot-1.png')).catch(() => null)
+        assert.ok(st?.isFile(), `task-${i}/shot-1.png must survive prune()`)
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('AC-STORE-7D explicit keepLastTasks still prunes when operator opts in', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-store7d2-'))
+    try {
+      const store = new AssetStore({ workspaceRoot: dir, keepLastTasks: 2 })
+      for (let i = 0; i < 4; i++) {
+        await store.writeImage('s', `task-${i}`, 'shot-1.png', new Uint8Array([i, 2, 3, 4]), { width: 1, height: 1 })
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      await store.prune()
+      const index = await store.readIndex()
+      assert.equal((index['s'] ?? []).length, 2)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('AC-STORE-RELOCATE changing workspaceRoot keeps old files in place', async () => {
+    const dirA = await mkdtemp(join(tmpdir(), 'dsh-rootA-'))
+    const dirB = await mkdtemp(join(tmpdir(), 'dsh-rootB-'))
+    try {
+      const storeA = new AssetStore({ workspaceRoot: dirA })
+      await storeA.writeImage('s', 'old-task', 'shot-1.png', new Uint8Array([9, 9, 9]), { width: 1, height: 1 })
+      const storeB = new AssetStore({ workspaceRoot: dirB })
+      await storeB.writeImage('s', 'new-task', 'shot-1.png', new Uint8Array([8, 8, 8]), { width: 1, height: 1 })
+      const oldFile = await stat(join(dirA, '.dsh/image-studio/s/old-task/shot-1.png')).catch(() => null)
+      assert.ok(oldFile?.isFile(), 'old root file must stay untouched after relocating')
+      const newFile = await stat(join(dirB, '.dsh/image-studio/s/new-task/shot-1.png')).catch(() => null)
+      assert.ok(newFile?.isFile(), 'new root must receive new files')
+    } finally {
+      await rm(dirA, { recursive: true, force: true })
+      await rm(dirB, { recursive: true, force: true })
     }
   })
 })

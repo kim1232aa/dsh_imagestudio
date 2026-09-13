@@ -1,4 +1,4 @@
-import { blit, createSolid, decodePng, encodePng, type RgbaImage } from './png.ts'
+import { blit, createSolid, decodeImage, encodePng, type RgbaImage } from './png.ts'
 
 export interface TriptychOptions {
   gapPx?: number
@@ -9,7 +9,7 @@ export interface TriptychOptions {
 export function composeTriptych(pngs: Uint8Array[], opts: TriptychOptions = {}): { png: Uint8Array; width: number; height: number; gapPx: number; heights: number[] } {
   if (pngs.length !== 3) throw new Error('triptych requires exactly 3 images')
   const gap = clamp(opts.gapPx ?? 10, 8, 12)
-  const images = pngs.map(decodePng)
+  const images = pngs.map(decodeImage)
   const width = Math.max(...images.map((i) => i.width))
   const scaled = images.map((img) => scaleToWidth(img, width))
   const ratios = parseRatios(opts.ratios ?? '1:1:1')
@@ -30,7 +30,7 @@ export function composeTriptych(pngs: Uint8Array[], opts: TriptychOptions = {}):
 }
 
 export function overlayTitle(png: Uint8Array, title: string): { png: Uint8Array; title: string; width: number; height: number } {
-  const img = decodePng(png)
+  const img = decodeImage(png)
   stampGlyphs(img, title, 8, img.height - 24)
   return { png: encodePng(img), title, width: img.width, height: img.height }
 }
@@ -65,7 +65,7 @@ function stampGlyphs(img: RgbaImage, text: string, x: number, y: number): void {
 }
 
 export function readEmbeddedTitle(png: Uint8Array): string {
-  const img = decodePng(png)
+  const img = decodeImage(png)
   const bytes: number[] = []
   for (let i = 0; i < img.width; i++) {
     const di = ((img.height - 1) * img.width + i) * 4

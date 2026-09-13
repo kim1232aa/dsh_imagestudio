@@ -4,6 +4,12 @@ export interface ProviderConfig {
   id: string
   protocol: 'openai-image' | 'gemini-generate' | 'nova-bridge' | 'mock'
   model: string
+  /** 视频模型（如 grok-imagine-video）；配置后渠道具备视频能力。 */
+  videoModel?: string
+  /** 图生图/编辑模型（如 grok-imagine-edit）；配置后参考图真正参与生成。 */
+  editModel?: string
+  /** 视觉理解模型（如 grok-4.5）；配置后渠道具备反推/AI 看图能力。 */
+  visionModel?: string
   baseUrl?: string
   apiKeyEnv: string
   maxRefImages?: number
@@ -22,7 +28,6 @@ export interface StudioConfig {
   skills: { dir: string; enabled: string[] }
   output: { dir: string; keepLastTasks: number; ttlHours?: number }
   limits: { concurrency: number; perTaskTimeoutMs: number; maxImagesPerCall: number }
-  guard: { blacklistPath?: string; failClosed: boolean }
 }
 
 const providerRow = Schema.object({
@@ -36,6 +41,9 @@ const providerRow = Schema.object({
   model: Schema.string().required(),
   apiKeyEnv: Schema.string().role('secret').required(),
   baseUrl: Schema.string(),
+  videoModel: Schema.string(),
+  editModel: Schema.string(),
+  visionModel: Schema.string(),
   maxRefImages: Schema.number(),
   maxResolution: Schema.string(),
   providerOptions: Schema.dict(Schema.any()),
@@ -56,27 +64,22 @@ export const Config = Schema.object({
   }).default({ dir: './skills', enabled: ['cinema-dna-21x9x3', 'life-force-portrait'] } as never),
   output: Schema.object({
     dir: Schema.string().default('.dsh/image-studio'),
-    keepLastTasks: Schema.number().default(50),
+    keepLastTasks: Schema.number().default(0),
     ttlHours: Schema.number(),
-  }).default({ dir: '.dsh/image-studio', keepLastTasks: 50 } as never),
+  }).default({ dir: '.dsh/image-studio', keepLastTasks: 0 } as never),
   limits: Schema.object({
     concurrency: Schema.number().default(3),
     perTaskTimeoutMs: Schema.number().default(180_000),
     maxImagesPerCall: Schema.number().default(4),
   }).default({ concurrency: 3, perTaskTimeoutMs: 180_000, maxImagesPerCall: 4 } as never),
-  guard: Schema.object({
-    blacklistPath: Schema.string(),
-    failClosed: Schema.boolean().default(true),
-  }).default({ failClosed: true } as never),
 })
 
 export const defaultConfig = (): StudioConfig => ({
   providers: [],
   defaults: {},
   skills: { dir: './skills', enabled: ['cinema-dna-21x9x3', 'life-force-portrait'] },
-  output: { dir: '.dsh/image-studio', keepLastTasks: 50 },
+  output: { dir: '.dsh/image-studio', keepLastTasks: 0 },
   limits: { concurrency: 3, perTaskTimeoutMs: 180_000, maxImagesPerCall: 4 },
-  guard: { failClosed: true },
 })
 
 export function assertProviderConfig(row: Partial<ProviderConfig>, path = 'providers[]'): ProviderConfig {

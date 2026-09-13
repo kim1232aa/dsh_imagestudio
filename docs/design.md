@@ -86,7 +86,7 @@ v0.1 §1.3 写「不移植 Next.js 前端，入口是 agent loop」。对照 Vis
 | `dsh-image-assets` | 产物落盘、索引、清理 | `jobs` | `imageAssets` |
 | `dsh-image-skills` | preset 加载与编译 | `llm` | `imageSkills` |
 | `dsh-image-compose` | 三联 / 裁切 / 叠字 / GIF | — | `imageCompose` |
-| `dsh-image-guard` | 拦截 | `imagegen` | — |
+| `dsh-image-guard` | 直通扩展点（无内置拦截规则，验收红线） | `imagegen` | — |
 | `dsh-image-tools` | 六个模型可见工具 | `tools` + 上述服务 | — |
 | `dsh-image-ui` | **独立工作台 + 侧栏入口** | `webServer`（可选注入）+ 上述服务 | `/imagestudio` |
 
@@ -149,7 +149,7 @@ UI 点「开始生成」与 Agent 调 `image_generate` **必须进入同一套 p
 | 事件 | 模式 | 用途 |
 |---|---|---|
 | `image/plan` | waterfall | 编译方案 |
-| `image/guard` | bail | 同步否决 |
+| `image/guard` | bail | 否决扩展点；默认监听器一律放行（无内容审查红线） |
 | `image/before-request` | waterfall | 锁比例、注入负面、剥参考图 |
 | `image/after-result` | parallel | 落盘、索引 |
 | `image/score` | serial | 自检 |

@@ -1,4 +1,4 @@
-/** DSH client half. Original. Loads the chrome hook that adds 「生图」. */
+/** DSH client half. Loads the chrome hook that adds 「技能台」. */
 export const name = 'image-studio-ui'
 export const inject = []
 

@@ -2,7 +2,7 @@
 
 > 日期：2026-09-12  
 > 仓库：https://github.com/kim1232aa/dsh_imagestudio  
-> 版本：v0.2（未签字验收）
+> 版本：v0.2.1（P 级自动项已过；AC-UI-01 需重启 Desktop 点「技能台」。详见 `docs/ACCEPTANCE.md`）
 
 ## 一句话
 
@@ -13,7 +13,7 @@
 
 已通：
 
-- 本机单测：`node --test --experimental-strip-types tests/*.test.ts`（约 63 项绿）
+- 本机单测：`npm ci && node --test --experimental-strip-types tests/*.test.ts`（mock，无 API Key；无 ffmpeg 时视频/GIF 走内置封装）
 - 官方 `dsh@0.1.5-rc.1` 可用 `--patch` 挂上本仓库
 - 工作台：`/imagestudio` 文生图 / 图生图 / Skill 策划 / 反推 / 三联 / 素材
 - 侧栏「生图」：匹配官方按钮文案 `New Session`（不要删空格）
@@ -84,7 +84,7 @@ dsh --dump-config | grep image
 
 ## 关键合同（改代码时别破坏）
 
-- 工具名只能是这 6 个：`image_skill_plan` `image_generate` `image_edit` `image_describe` `image_compose` `image_assets`
+- 工具名只能是这 6 个：`istudio_skill_plan` `istudio_generate` `istudio_edit` `istudio_describe` `istudio_compose` `istudio_assets`
 - `defineTool` 的 `execute` 返回对象；`output.render` 才变成 `{type:text,text}`
 - waterfall `image/before-request` 观察者必须 `next()`
 - cinema-dna：`aspectRatio` 锁 21:9；compose 走本地拼图，禁止把「画三格」送进 generate
@@ -102,10 +102,10 @@ dsh --dump-config | grep image
 
 ## 下一班要做
 
-1. 把本地 `packages/**`、`tests/**`、`docs/01-03` 全部推上 `main`（clone 必须能 `npm test`）
-2. 官方壳里再点一遍 AC-UI-06…10
-3. AC-UI-11：卸 image-ui / bundle 后「生图」消失
-4. AC-UI-12：Settings → Plugins 的 Global/Host 列表露出 image-*
+1. 官方壳里再点一遍 AC-UI-06…10（自绘 3080 不能代替 §0）
+2. AC-UI-11：卸 image-ui / bundle 后「生图」消失（单测已覆盖 MemoryWebServer）
+3. AC-UI-12：Settings → Plugins 的 Global/Host 列表露出 image-*（或改验收措辞：它们在 `--patch` / bundle 层）
+4. 真密钥渠道（OpenAI / Grok / Seedream 等）出片
 5. 不要搬 Nova / VisioWork 源码
 
 ## 联系路径

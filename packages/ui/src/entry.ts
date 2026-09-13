@@ -1,64 +1,136 @@
-/** Original sidebar entry script. Observes DSH chrome and adds 生图 next to 新会话. */
+/** Sidebar entry. Yields 「生图」 to dsh-imagegen; this plugin is 「技能台」.
+ * Clicking opens the studio as an in-app overlay (iframe) instead of a
+ * full-page navigation, so the DSH shell — sidebar, session list, current
+ * conversation — stays mounted underneath and comes back instantly on close. */
 export const entryJs = `(() => {
-  if (window.__dshImageStudioEntry) return;
-  window.__dshImageStudioEntry = true;
+  const BTN_ATTR = "data-imagestudio-entry";
+  const OVERLAY_ID = "imagestudio-overlay";
+  const LABEL = "技能台";
+  const HREF = "/imagestudio";
 
-  const LABEL = '生图';
-  const HREF = '/imagestudio';
-
-  function looksLikeNewSession(el) {
-    if (!el || el.dataset && el.dataset.imagestudio) return false;
-    const t = (el.textContent || '').replace(/\\s+/g, '');
-    return t.includes('新会话') || t.includes('NewSession') || t.includes('New session');
+  function imagegenTabs() {
+    return document.querySelector("[data-dsh-imagegen-session-tabs]");
   }
 
-  function makeBtn() {
-    const a = document.createElement('a');
-    a.href = HREF;
-    a.textContent = LABEL;
-    a.dataset.imagestudio = 'entry';
-    a.setAttribute('aria-label', '打开 Image Studio');
-    const probe = document.querySelector('button, a');
-    const cs = probe ? getComputedStyle(probe) : null;
-    a.style.cssText = [
-      'display:inline-flex',
-      'align-items:center',
-      'justify-content:center',
-      'margin-left:8px',
-      'padding:6px 12px',
-      'border-radius:8px',
-      'border:1px solid rgba(196,165,116,.45)',
-      'color:#c4a574',
-      'text-decoration:none',
-      'font:inherit',
-      'white-space:nowrap',
-      'background:transparent',
-      'cursor:pointer',
-    ].join(';');
-    a.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      window.location.assign(HREF);
+  function findNewSessionButton() {
+    const nodes = [...document.querySelectorAll("button, a, [role='button']")];
+    return nodes.find((b) => {
+      if (b.closest("[data-dsh-imagegen-session-tabs]")) return false;
+      if (b.hasAttribute(BTN_ATTR)) return false;
+      return /新会话|New\\s*Session/i.test((b.textContent || "").replace(/\\s+/g, " ").trim());
     });
-    return a;
   }
 
-  function place() {
-    if (document.querySelector('[data-imagestudio="entry"]')) return true;
-    const nodes = document.querySelectorAll('button, a, [role="button"]');
-    for (const el of nodes) {
-      if (!looksLikeNewSession(el)) continue;
-      const parent = el.parentElement;
-      if (!parent) continue;
-      const btn = makeBtn();
-      if (el.nextSibling) parent.insertBefore(btn, el.nextSibling);
-      else parent.appendChild(btn);
-      return true;
+  function onEsc(ev) {
+    if (ev.key === "Escape") closeOverlay();
+  }
+
+  function closeOverlay() {
+    const el = document.getElementById(OVERLAY_ID);
+    if (el) el.remove();
+    document.removeEventListener("keydown", onEsc, true);
+  }
+
+  function openOverlay() {
+    if (document.getElementById(OVERLAY_ID)) return;
+    const wrap = document.createElement("div");
+    wrap.id = OVERLAY_ID;
+    wrap.style.cssText = [
+      "position:fixed", "inset:0", "z-index:99999",
+      "background:#0b0d12", "display:flex", "flex-direction:column",
+    ].join(";");
+    const bar = document.createElement("div");
+    bar.style.cssText = [
+      "flex:0 0 44px", "display:flex", "align-items:center", "gap:12px",
+      "padding:0 14px", "border-bottom:1px solid rgba(255,255,255,.08)",
+      "background:#10131a", "color:#e8c547", "font:13px/1.4 system-ui,sans-serif",
+    ].join(";");
+    const back = document.createElement("button");
+    back.type = "button";
+    back.textContent = "← 返回会话";
+    back.style.cssText = [
+      "padding:6px 14px", "border-radius:8px",
+      "border:1px solid rgba(201,162,39,.45)", "background:rgba(201,162,39,.12)",
+      "color:#e8c547", "cursor:pointer", "font-size:13px",
+    ].join(";");
+    back.addEventListener("click", closeOverlay);
+    const hint = document.createElement("span");
+    hint.textContent = "技能台 · Image Studio（Esc 或左上角返回，原会话保持不动）";
+    hint.style.opacity = ".7";
+    const frame = document.createElement("iframe");
+    frame.src = HREF;
+    frame.style.cssText = "flex:1;border:0;width:100%;background:#0b0d12";
+    // Same-origin: reroute the studio page's own 「← 返回会话」 to close the
+    // overlay instead of navigating the iframe to the shell URL.
+    frame.addEventListener("load", () => {
+      try {
+        const doc = frame.contentDocument;
+        const home = doc && doc.getElementById("backHome");
+        if (home) {
+          home.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            closeOverlay();
+          });
+        }
+      } catch (e) { console.warn("[imagestudio] iframe backHome rewiring skipped:", e); }
+    });
+    bar.appendChild(back);
+    bar.appendChild(hint);
+    wrap.appendChild(bar);
+    wrap.appendChild(frame);
+    document.body.appendChild(wrap);
+    document.addEventListener("keydown", onEsc, true);
+  }
+
+  function makeControl() {
+    const studio = document.createElement("a");
+    studio.href = HREF;
+    studio.setAttribute(BTN_ATTR, "1");
+    studio.textContent = LABEL;
+    studio.title = "打开 Image Studio 技能工作台（浮层打开，不顶掉会话界面）";
+    studio.style.cssText = [
+      "display:block",
+      "width:100%",
+      "margin:8px 0 0",
+      "height:36px",
+      "line-height:36px",
+      "text-align:center",
+      "text-decoration:none",
+      "border-radius:8px",
+      "border:1px solid rgba(201,162,39,.45)",
+      "background:rgba(201,162,39,.12)",
+      "color:#e8c547",
+      "cursor:pointer",
+      "box-sizing:border-box",
+    ].join(";");
+    studio.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openOverlay();
+    });
+    return studio;
+  }
+
+  function ensureButton() {
+    if (document.querySelector("[" + BTN_ATTR + "]")) return;
+    const studio = makeControl();
+    const tabs = imagegenTabs();
+    if (tabs && tabs.parentElement) {
+      if (tabs.nextSibling) tabs.parentElement.insertBefore(studio, tabs.nextSibling);
+      else tabs.parentElement.appendChild(studio);
+      return;
     }
-    return false;
+    const origin = findNewSessionButton();
+    if (!origin || !origin.parentElement) return;
+    if (origin.nextSibling) origin.parentElement.insertBefore(studio, origin.nextSibling);
+    else origin.parentElement.appendChild(studio);
   }
 
-  place();
-  const obs = new MutationObserver(() => place());
+  const obs = new MutationObserver(() => ensureButton());
   obs.observe(document.documentElement, { childList: true, subtree: true });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
+  else ensureButton();
+  setInterval(ensureButton, 1500);
 })();
-`;
+`

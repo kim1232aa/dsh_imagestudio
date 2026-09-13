@@ -77,7 +77,7 @@ export class JobStore {
     return job
   }
 
-  finish(id: string, status: 'done' | 'failed', error?: string): Job | undefined {
+  finish(id: string, status: 'done' | 'failed' | 'canceled', error?: string): Job | undefined {
     const job = this.jobs.get(id)
     if (!job) return
     if (job.status === 'canceled') return job

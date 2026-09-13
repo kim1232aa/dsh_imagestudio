@@ -10,7 +10,7 @@ export const inject = ['jobs']
 
 export const Config = Schema.object({
   workspaceRoot: Schema.string().default('.'),
-  keepLastTasks: Schema.number().default(50),
+  keepLastTasks: Schema.number().default(0),
   outputDir: Schema.string(),
 })
 
@@ -20,7 +20,7 @@ export function apply(
 ): void {
   const store = new AssetStore({
     workspaceRoot: config.workspaceRoot ?? '.',
-    keepLastTasks: config.keepLastTasks ?? 50,
+    keepLastTasks: config.keepLastTasks ?? 0,
     outputDir: config.outputDir,
   })
   ctx.provide('imageAssets', store)

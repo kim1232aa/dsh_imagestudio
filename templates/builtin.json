@@ -1,0 +1,106 @@
+{
+  "source": {
+    "id": "builtin",
+    "name": "内置精选",
+    "origin": "bundled",
+    "updatedAt": "2026-09-13"
+  },
+  "templates": [
+    {
+      "id": "builtin-cinematic-still",
+      "title": "电影感宽幅剧照",
+      "category": "电影",
+      "prompt": "电影剧照质感，广袤沙漠中的孤独旅人，米色风衣，黄金时刻逆光，变形宽银幕镜头光晕，青橙色调，超宽幅构图，画面有故事感",
+      "negative": "文字, 水印, 低清晰度, 过曝",
+      "ratio": "21:9",
+      "mode": "txt",
+      "preview": "previews/tpl-1.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-movie-poster",
+      "title": "科幻电影海报",
+      "category": "海报",
+      "prompt": "科幻惊悚电影海报：红衣女子仰望雨夜霓虹城市上空巨大的环形飞船，戏剧性轮廓光，顶部留出标题空间，竖版构图，高级感",
+      "negative": "杂乱背景, 多余人物, 模糊",
+      "ratio": "9:16",
+      "mode": "txt",
+      "preview": "previews/tpl-2.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-ecom-white",
+      "title": "电商白底产品图",
+      "category": "电商",
+      "prompt": "电商产品摄影：哑光黑色头戴式无线耳机，纯白无缝背景，柔和影棚光，轻投影，居中构图，极简，突出材质细节",
+      "negative": "背景杂物, 彩色背景, 反光过强",
+      "ratio": "1:1",
+      "mode": "txt",
+      "preview": "previews/tpl-3.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-portrait",
+      "title": "人文人像摄影",
+      "category": "人像",
+      "prompt": "人像摄影：满脸风霜的老渔民，灰白色胡须，柔和窗边光，浅景深，85mm 镜头感，暖色调，眼神有故事",
+      "negative": "磨皮过度, 塑料感, 变形五官",
+      "ratio": "3:4",
+      "mode": "txt",
+      "preview": "previews/tpl-4.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-street-night",
+      "title": "雨夜街头摄影",
+      "category": "摄影",
+      "prompt": "街头摄影：雨夜的小巷，霓虹招牌在湿漉漉的路面上反射，撑透明雨伞的行人背影，电影感氛围，高对比",
+      "negative": "白天, 过亮, 噪点",
+      "ratio": "4:3",
+      "mode": "txt",
+      "preview": "previews/tpl-5.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-character-sheet",
+      "title": "角色设定图",
+      "category": "角色",
+      "prompt": "角色设定图：橘发琥珀瞳的狐耳少女，正视图，干净纯色背景，动漫概念设计风格，红白配色服饰细节精致，可附局部标注",
+      "negative": "复杂背景, 多角色, 姿势扭曲",
+      "ratio": "1:1",
+      "mode": "txt",
+      "preview": "previews/tpl-6.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-tea-still",
+      "title": "静物茶文化",
+      "category": "电商",
+      "prompt": "一只青瓷茶盏放在老木桌上，晨光从左侧窗户洒入，茶汤温热冒着热气，背景虚化有老茶壶，安静朴素的东方美学，质感摄影",
+      "negative": "现代元素, 塑料质感, 强光",
+      "ratio": "3:2",
+      "mode": "txt",
+      "preview": "previews/builtin-1.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    },
+    {
+      "id": "builtin-matcha-scene",
+      "title": "茶道场景氛围图",
+      "category": "摄影",
+      "prompt": "日式茶道场景：茶筅与黑釉抹茶碗，茶汤表面细腻泡沫，竹制茶具错落摆放，柔和自然光，浅景深，禅意氛围",
+      "negative": "杂乱, 艳俗色彩",
+      "ratio": "1:1",
+      "mode": "txt",
+      "preview": "previews/builtin-8.jpg",
+      "author": "imagestudio 内置",
+      "link": "https://github.com/kim1232aa/dsh_imagestudio"
+    }
+  ]
+}

@@ -27,6 +27,7 @@ If a rule can be an assertion, it is a hard constraint in `preset.yaml` and the 
 ## Tests
 
 ```bash
+npm ci
 node --test --experimental-strip-types tests/*.test.ts
 ```
 

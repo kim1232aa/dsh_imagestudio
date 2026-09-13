@@ -54,7 +54,7 @@ export async function bootStudio(opts: BootOptions): Promise<StudioHost> {
   await ctx.plugin(core)
   await ctx.plugin(compose)
   await ctx.plugin(guard)
-  await ctx.plugin(assets, { workspaceRoot: opts.workspaceRoot, keepLastTasks: 50 })
+  await ctx.plugin(assets, { workspaceRoot: opts.workspaceRoot, keepLastTasks: 0 })
   await ctx.plugin(skills, { dir: opts.skillsDir, enabled: opts.enabledSkills })
   await ctx.plugin(mock)
 

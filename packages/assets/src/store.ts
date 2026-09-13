@@ -19,7 +19,8 @@ export class AssetStore {
   constructor(opts: AssetStoreOptions) {
     this.root = opts.workspaceRoot
     this.studioDir = join(opts.workspaceRoot, opts.outputDir ?? '.dsh/image-studio')
-    this.keepLastTasks = opts.keepLastTasks ?? 50
+    // 0 = 永不自动清理（验收第八章：连续使用不允许任何文件被自动删除）
+    this.keepLastTasks = opts.keepLastTasks ?? 0
   }
 
   taskDir(sessionId: string, taskId: string): string {
@@ -81,6 +82,7 @@ export class AssetStore {
   }
 
   async prune(): Promise<void> {
+    if (this.keepLastTasks <= 0) return // 默认不自动删除任何文件
     const sessions = await safeList(this.studioDir)
     const tasks: { path: string; mtime: number }[] = []
     for (const session of sessions) {

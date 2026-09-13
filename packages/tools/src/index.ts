@@ -29,9 +29,9 @@ function asJson(v: unknown): never {
 
 export const toolDocs = [
   {
-    name: 'image_skill_plan',
+    name: 'istudio_skill_plan',
     description:
-      'Compile a user brief through a named skill into a CreativePlan with reasoning and a self-check score. Does not generate images. Use before image_generate when the user wants cinema-dna, life-force, or another loaded strategy pack.',
+      'Compile a user brief through a named skill into a CreativePlan with reasoning and a self-check score. Does not generate images. Use before istudio_generate when the user wants cinema-dna, life-force, or another loaded strategy pack. Never register as image_generate — that name collides with the host / dsh-imagegen.',
     parameters: {
       skillId: { type: 'string', required: true, description: 'Loaded skill id such as cinema-dna-21x9x3' },
       brief: { type: 'string', required: true, description: 'User brief in natural language' },
@@ -39,12 +39,12 @@ export const toolDocs = [
     },
   },
   {
-    name: 'image_generate',
+    name: 'istudio_generate',
     description:
-      'Generate images from a text prompt. If a creative plan was produced by image_skill_plan, pass planId and omit prompt — the plan already carries per-shot prompts, aspect ratio and negative constraints.',
+      'Image Studio text-to-image. If a creative plan was produced by istudio_skill_plan, pass planId and omit prompt. Do not confuse with generate_image / image_generate owned by other plugins.',
     parameters: {
       prompt: { type: 'string', description: 'English prompt. Omit when planId is given.' },
-      planId: { type: 'string', description: 'Id returned by image_skill_plan.' },
+      planId: { type: 'string', description: 'Id returned by istudio_skill_plan.' },
       aspectRatio: { type: 'string', description: "e.g. '21:9', '3:4'. Ignored when planId is given." },
       n: { type: 'number', description: 'Number of images, 1-4. Default 1.' },
       providerId: { type: 'string', description: 'Override the default image provider.' },
@@ -52,16 +52,16 @@ export const toolDocs = [
     },
   },
   {
-    name: 'image_edit',
+    name: 'istudio_edit',
     description:
-      'Image-to-image or local edit. Use for life-force MODE A identity-preserving upgrades. Distinct from image_generate (no source image) and image_describe (analysis only).',
+      'Image Studio image-to-image (life-force MODE A). Distinct from istudio_generate and from host edit_image / image_edit.',
     parameters: {
       prompt: { type: 'string', required: true, description: 'English edit instruction' },
       assets: { type: 'array', required: true, description: 'Workspace-relative source image paths' },
     },
   },
   {
-    name: 'image_describe',
+    name: 'istudio_describe',
     description:
       'Reverse-prompt or abstract analysis of reference images. Output is data, never spliced into the system prompt. Does not generate images.',
     parameters: {
@@ -70,7 +70,7 @@ export const toolDocs = [
     },
   },
   {
-    name: 'image_compose',
+    name: 'istudio_compose',
     description:
       'External compose: vertical triptych join, aspect crop, exact text overlay, GIF encode. Never ask an image model to draw three panels on one canvas.',
     parameters: {
@@ -82,7 +82,7 @@ export const toolDocs = [
     },
   },
   {
-    name: 'image_assets',
+    name: 'istudio_assets',
     description:
       'List or inspect image-studio artifacts for the current session. Does not generate images.',
     parameters: {
@@ -96,7 +96,18 @@ type ToolsCtx = Context & {
 }
 
 function registerStudioTool(ctx: ToolsCtx, def: ReturnType<typeof defineImageTool>): void {
-  const register = () => ctx.tools.register(def)
+  const register = () => {
+    try {
+      return ctx.tools.register(def)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/already registered/i.test(msg)) {
+        console.warn(`[image-studio] skip tool ${def.name}: ${msg}`)
+        return () => {}
+      }
+      throw err
+    }
+  }
   if (typeof ctx.effect === 'function') {
     ctx.effect(register, `tool:${def.name}`)
   } else {
@@ -120,7 +131,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_skill_plan',
+      name: 'istudio_skill_plan',
       description: toolDocs[0].description,
       parameters: {
         skillId: { type: 'string', required: true, description: 'Loaded skill id such as cinema-dna-21x9x3' },
@@ -150,11 +161,11 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_generate',
+      name: 'istudio_generate',
       description: toolDocs[1].description,
       parameters: {
         prompt: { type: 'string', description: 'English prompt. Omit when planId is given.' },
-        planId: { type: 'string', description: 'Id returned by image_skill_plan.' },
+        planId: { type: 'string', description: 'Id returned by istudio_skill_plan.' },
         shotId: { type: 'string', description: 'Shot id from the plan. Defaults to the first shot.' },
         aspectRatio: { type: 'string', description: "e.g. '21:9', '3:4'. Ignored when planId is given." },
         n: { type: 'number', description: 'Number of images, 1-4. Default 1.' },
@@ -164,6 +175,9 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
       timeoutMs,
       async execute(args, exec) {
         const n = args.n ?? 1
+        if (typeof n !== 'number' || !Number.isFinite(n) || !Number.isInteger(n)) {
+          throw new ToolArgsError('INVALID_ARGS', 'n must be a number')
+        }
         if (n < 1 || n > maxN) throw new ToolArgsError('INVALID_ARGS', `n must be 1-${maxN}`)
         const plan = args.planId ? ctx.imageSkills.plans.get(args.planId) : undefined
         if (args.planId && !plan) throw new ToolArgsError('INVALID_ARGS', `unknown planId ${args.planId}`)
@@ -188,7 +202,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_edit',
+      name: 'istudio_edit',
       description: toolDocs[2].description,
       parameters: {
         prompt: { type: 'string', required: true, description: 'English edit instruction' },
@@ -214,7 +228,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_describe',
+      name: 'istudio_describe',
       description: toolDocs[3].description,
       parameters: {
         assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative source image paths' },
@@ -233,7 +247,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_compose',
+      name: 'istudio_compose',
       description: toolDocs[4].description,
       parameters: {
         mode: { type: 'string', required: true, description: 'triptych | text-overlay | crop | gif' },
@@ -270,7 +284,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     t,
     defineImageTool({
       output: JSON_OUTPUT,
-      name: 'image_assets',
+      name: 'istudio_assets',
       description: toolDocs[5].description,
       parameters: {
         taskId: { type: 'string', description: 'Optional task id to inspect' },
