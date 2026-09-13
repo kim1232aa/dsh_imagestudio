@@ -5,6 +5,19 @@ export const BUNDLED_YAML: Record<string, string> = {
 version: 1.2.2
 title: CINEMA DNA 21:9 × 3
 source: SKILL.md
+triggers:
+  - 电影三联
+  - '21:9 电影静帧'
+  - 用 9 张图讲一个故事
+  - 九宫格故事板
+  - 电影感分镜
+  - 导演镜头感的三连图
+  - 宽幅电影画面
+  - 镜头测试
+antiTriggers:
+  - 电影海报
+  - 把这张照片修出电影感
+  - 角色三视图
 modes:
   triptych:
     shots: 3
@@ -82,6 +95,19 @@ variationRules:
 version: 1.0.0
 title: Fantasy life-force portrait
 source: SKILL.md
+triggers:
+  - 游客照变高级
+  - 这张废片救一下
+  - 生命感人像
+  - 氛围感大片
+  - 朋友圈照片升级
+  - 人像摄影提示词
+  - 人像样片
+  - 清透不油的人像
+antiTriggers:
+  - 街头纪实组图
+  - 电影海报
+  - 角色设计
 modes:
   mode-a:
     shots: 1
@@ -130,6 +156,19 @@ scoring:
 version: 1.0.0
 title: Photography simulation
 source: SKILL.md
+triggers:
+  - 摄影模拟
+  - 徕卡气质街拍组图
+  - 哈苏风格摄影
+  - '理光 GR 日常'
+  - 摄影拼图
+  - 旅行纪实摄影组图
+  - 相机气质出图
+  - 同一地点多图拼一张
+antiTriggers:
+  - 单张人像写真
+  - 宽幅电影故事
+  - 电影海报
 modes:
   still:
     shots: 1
@@ -164,6 +203,19 @@ version: 0.9.0
 title: Movie poster (superseded)
 source: SKILL.md
 supersededBy: cinema-dna-21x9x3
+triggers:
+  - 电影海报
+  - 设计一张海报
+  - '9:16 竖版海报'
+  - 片名海报
+  - 书法标题海报
+  - 不同题材的海报
+  - 海报底图
+antiTriggers:
+  - 电影静帧
+  - 电影感分镜
+  - 社媒封面
+  - 小红书图
 modes:
   poster:
     trigger: explicit
@@ -199,6 +251,19 @@ scoring:
 version: 1.0.0
 title: Character casting
 source: SKILL.md
+triggers:
+  - 设计一个角色
+  - 原创人物设定
+  - 电影选角图
+  - 角色三视图
+  - 白底角色图
+  - '模特 casting 卡'
+  - 人物设定图
+antiTriggers:
+  - 把真人照片变好看
+  - 动漫角色
+  - 游戏角色
+  - 电影海报
 modes:
   sheet:
     shots: 1
