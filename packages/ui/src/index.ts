@@ -3,8 +3,8 @@
  * Serves /imagestudio workbench + JSON API on the official dsh webServer.
  * Original code — pattern inspired by DSH client chrome hooks, not VisioWork source.
  */
-import { readFile, readdir, stat, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { readFile, readdir, stat, mkdtemp, mkdir, writeFile, rm, rename } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -17,9 +17,9 @@ import type { ImageRequest } from '../../core/src/types.ts'
 import { studioPage } from './studio-page.ts'
 import { defaultProject, placeResultNode, placeVideoResult, resolvePrompt, type CanvasProject } from './canvas-graph.ts'
 import { buildEcomPlan, type EcomPlan } from './ecom-plan.ts'
-import { assertInsideWorkspace } from '../../assets/src/paths.ts'
+import { assertInsideWorkspace, toWorkspaceRelative } from '../../assets/src/paths.ts'
 import { extForMime, OpenAIImageProvider } from '../../provider-openai/src/index.ts'
-import { PathEscapeError } from '../../core/src/errors.ts'
+import { PathEscapeError, ToolArgsError } from '../../core/src/errors.ts'
 import { decodeImage, encodeGif, encodePng, quantizeToSvg } from '../../compose/src/index.ts'
 import { blitRegion, compositeOver, cropRegion, removeBackground } from '../../compose/src/region.ts'
 import { createSolid } from '../../compose/src/png.ts'
@@ -113,6 +113,85 @@ function send(res: import('node:http').ServerResponse, status: number, body: unk
     'cache-control': 'no-store',
   })
   res.end(raw)
+}
+
+const MEDIA_EXT = /\.(png|jpe?g|gif|webp|mp4|webm)$/i
+
+function mimeForName(name: string): string {
+  if (/\.mp4$/i.test(name)) return 'video/mp4'
+  if (/\.webm$/i.test(name)) return 'video/webm'
+  if (/\.gif$/i.test(name)) return 'image/gif'
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg'
+  if (/\.webp$/i.test(name)) return 'image/webp'
+  return 'image/png'
+}
+
+interface AssetItem {
+  path: string
+  mime: string
+  title: string
+  kind: 'generated' | 'uploaded'
+  session: string
+  task: string
+  size: number
+  mtime: number
+  sha256: string
+}
+
+/** 素材库全量扫描：生成产物（session/task 目录）+ 用户上传（uploads/）。sha256 只对分页切片计算。 */
+async function listWorkspaceAssets(ctx: Context): Promise<AssetItem[]> {
+  const out: AssetItem[] = []
+  const index = await ctx.imageAssets.readIndex()
+  for (const [session, tasks] of Object.entries(index)) {
+    if (session === 'uploads' || session === 'backups') continue
+    for (const task of tasks as string[]) {
+      const dir = join(ctx.imageAssets.studioDir, session, task)
+      const files = await readdir(dir).catch(() => [])
+      for (const name of files.filter((n) => MEDIA_EXT.test(n))) {
+        const abs = join(dir, name)
+        const st = await stat(abs).catch(() => null)
+        if (!st || !st.isFile() || st.size <= 0) continue
+        out.push({
+          path: join('.dsh/image-studio', session, task, name).replace(/\\/g, '/'),
+          mime: mimeForName(name),
+          title: name,
+          kind: 'generated',
+          session,
+          task,
+          size: st.size,
+          mtime: st.mtimeMs,
+          sha256: '',
+        })
+      }
+    }
+  }
+  const upDir = join(ctx.imageAssets.studioDir, 'uploads')
+  const upFiles = await readdir(upDir).catch(() => [])
+  for (const name of upFiles.filter((n) => MEDIA_EXT.test(n))) {
+    const abs = join(upDir, name)
+    const st = await stat(abs).catch(() => null)
+    if (!st || !st.isFile() || st.size <= 0) continue
+    out.push({
+      path: join('.dsh/image-studio', 'uploads', name).replace(/\\/g, '/'),
+      mime: mimeForName(name),
+      title: name,
+      kind: 'uploaded',
+      session: 'uploads',
+      task: '',
+      size: st.size,
+      mtime: st.mtimeMs,
+      sha256: '',
+    })
+  }
+  out.sort((a, b) => b.mtime - a.mtime)
+  return out
+}
+
+/** 上传/重命名的文件名清洗：剥掉路径分隔与非法字符，拒绝穿越。 */
+function sanitizeAssetName(raw: string): string {
+  const name = (raw.split(/[/\\]/).pop() || '').replace(/[^a-zA-Z0-9._\u4e00-\u9fa5-]/g, '_')
+  if (!name || name.includes('..') || name.startsWith('.')) return ''
+  return name
 }
 
 interface UiSliceProposal { x: number; y: number; w: number; h: number; label: string }
@@ -232,40 +311,61 @@ export function apply(ctx: Context): void {
             send(res, 200, { skills, providers: ctx.imagegen.list() })
             return
           }
+          // 素材库打包下载：?paths=a,b,c → ZIP 附件（compose/zip.ts 最小实现）
+          if (url.pathname === '/imagestudio/api/assets/zip' && (!req.method || req.method === 'GET')) {
+            const paths = (url.searchParams.get('paths') ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .slice(0, 100)
+            if (!paths.length) {
+              send(res, 400, { error: 'paths required（逗号分隔的工作区相对路径）' })
+              return
+            }
+            try {
+              const entries: Array<{ name: string; data: Uint8Array }> = []
+              const used = new Set<string>()
+              for (const rel of paths) {
+                const abs = join(ctx.imageAssets.root, rel)
+                assertInsideWorkspace(ctx.imageAssets.studioDir, abs)
+                const data = new Uint8Array(await readFile(abs))
+                let name = rel.split('/').pop() || 'file'
+                if (used.has(name)) name = `${used.size}-${name}`
+                used.add(name)
+                entries.push({ name, data })
+              }
+              const zip = writeZip(entries)
+              res.writeHead(200, {
+                'content-type': 'application/zip',
+                'content-disposition': 'attachment; filename="imagestudio-assets.zip"',
+                'cache-control': 'no-store',
+              })
+              res.end(Buffer.from(zip))
+            } catch (err) {
+              const status = err instanceof PathEscapeError ? 403 : 404
+              send(res, status, { error: err instanceof Error ? err.message : String(err) })
+            }
+            return
+          }
+          // 我的素材：?q= 搜索、?type=generated|uploaded|all、offset/limit 分页
           if (url.pathname === '/imagestudio/api/assets' && (!req.method || req.method === 'GET')) {
             const index = await ctx.imageAssets.readIndex()
-            const images: Array<{ path: string; mime: string; title: string; session: string; task: string; sha256: string }> = []
-            for (const [session, tasks] of Object.entries(index)) {
-              // 窗口要足够大：只扫末尾几个任务时，新出的视频/GIF 会被
-              // 批量出图的任务量挤出展示范围（实测 18 个任务里排第 4 的视频不显示）。
-              for (const task of (tasks as string[]).slice(-24).reverse()) {
-                const dir = join(ctx.imageAssets.studioDir, session, task)
-                const files = await readdir(dir).catch(() => [])
-              for (const name of files.filter((n) => /\.(png|jpe?g|gif|webp|mp4)$/i.test(n))) {
-                  const abs = join(dir, name)
-                  const st = await stat(abs).catch(() => null)
-                  if (!st || !st.isFile() || st.size <= 0) continue
-                  const mime = name.endsWith('.mp4')
-                    ? 'video/mp4'
-                    : /\.jpe?g$/i.test(name)
-                      ? 'image/jpeg'
-                      : name.endsWith('.gif')
-                        ? 'image/gif'
-                        : name.endsWith('.webp')
-                          ? 'image/webp'
-                          : 'image/png'
-                  images.push({
-                    path: join('.dsh/image-studio', session, task, name).replace(/\\/g, '/'),
-                    mime,
-                    title: name,
-                    session,
-                    task,
-                    sha256: createHash('sha256').update(await readFile(abs)).digest('hex'),
-                  })
-                }
-              }
+            const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+            const type = url.searchParams.get('type') ?? 'all'
+            const kindFilter = type === 'generated' || type === 'uploaded' ? type : ''
+            const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
+            const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit')) || 48))
+            let all = await listWorkspaceAssets(ctx)
+            if (kindFilter) all = all.filter((a) => a.kind === kindFilter)
+            if (q) all = all.filter((a) => (a.title + ' ' + a.path).toLowerCase().includes(q))
+            const total = all.length
+            const page = all.slice(offset, offset + limit)
+            for (const item of page) {
+              item.sha256 = createHash('sha256')
+                .update(await readFile(join(ctx.imageAssets.root, item.path)))
+                .digest('hex')
             }
-            send(res, 200, { index, images: images.slice(0, 48) })
+            send(res, 200, { index, images: page, total, offset, limit })
             return
           }
           if (url.pathname === '/imagestudio/api/storage-info' && (!req.method || req.method === 'GET')) {
@@ -399,6 +499,52 @@ export function apply(ctx: Context): void {
             send(res, 200, { path: ref.path, width: ref.width, height: ref.height, mime: ref.mime })
             return
           }
+          // 素材库上传：multipart（或 base64 JSON），≤10MB，落 .dsh/image-studio/uploads/
+          if (req.method === 'POST' && url.pathname === '/imagestudio/api/assets/upload') {
+            const rawBuf = await readRaw(req)
+            const headers = (req as { headers?: Record<string, string | string[] | undefined> }).headers ?? {}
+            const ctype = String(headers['content-type'] ?? headers['Content-Type'] ?? '')
+            let bytes = Buffer.alloc(0)
+            let filename = 'upload.png'
+            let mime = 'image/png'
+            try {
+              if (ctype.includes('multipart/form-data')) {
+                const parsed = parseMultipart(rawBuf, ctype)
+                bytes = parsed.bytes
+                filename = parsed.filename
+                mime = parsed.mime || 'image/png'
+              } else {
+                const body = rawBuf.length ? JSON.parse(rawBuf.toString('utf8')) : {}
+                const b64 = String(body.data ?? body.bytes ?? '')
+                bytes = Buffer.from(b64, 'base64')
+                filename = String(body.filename ?? body.name ?? 'upload.png')
+                mime = String(body.mime ?? 'image/png')
+              }
+            } catch (err) {
+              send(res, 400, { error: '上传体解析失败：' + (err instanceof Error ? err.message : String(err)) })
+              return
+            }
+            if (!bytes.length) {
+              send(res, 400, { error: 'empty upload' })
+              return
+            }
+            if (bytes.length > MAX_UPLOAD) {
+              send(res, 413, { error: '超过大小限制 10MB' })
+              return
+            }
+            const clean = sanitizeAssetName(filename) || 'upload.png'
+            const upDir = join(ctx.imageAssets.studioDir, 'uploads')
+            await mkdir(upDir, { recursive: true })
+            let name = clean
+            let abs = join(upDir, name)
+            if (await stat(abs).catch(() => null)) name = `${Date.now()}-${clean}`
+            abs = join(upDir, name)
+            assertInsideWorkspace(ctx.imageAssets.root, abs)
+            await writeFile(abs, bytes)
+            await ctx.imageAssets.rebuildIndex()
+            send(res, 200, { ok: true, path: toWorkspaceRelative(ctx.imageAssets.root, abs), name, mime, size: bytes.length })
+            return
+          }
           if (req.method === 'POST' && url.pathname.startsWith('/imagestudio/api/')) {
             const raw = await readBody(req)
             const body = raw ? JSON.parse(raw) : {}
@@ -415,6 +561,73 @@ export function apply(ctx: Context): void {
             assertInsideWorkspace(ctx.imageAssets.root, abs)
             await writeFile(abs, JSON.stringify({ app: 'imagestudio-backup', version: 1, exportedAt: new Date().toISOString(), data }, null, 2))
             send(res, 200, { ok: true, path: abs })
+            return
+          }
+          // 素材库重命名：{path, name}，只允许 .dsh/image-studio 内的文件
+          if (url.pathname === '/imagestudio/api/assets/rename') {
+            const rel = String(body.path || '')
+            const rawName = String(body.name || '').trim()
+            if (!rel || !rawName) {
+              send(res, 400, { error: 'path 与 name 都是必填' })
+              return
+            }
+            let name = sanitizeAssetName(rawName)
+            if (!name) {
+              send(res, 400, { error: `文件名不合法：${rawName}` })
+              return
+            }
+            try {
+              const abs = join(ctx.imageAssets.root, rel)
+              assertInsideWorkspace(ctx.imageAssets.studioDir, abs)
+              const st = await stat(abs).catch(() => null)
+              if (!st || !st.isFile()) {
+                send(res, 404, { error: `文件不存在：${rel}` })
+                return
+              }
+              const oldExt = /\.\w+$/.exec(rel)?.[0] ?? ''
+              if (oldExt && !new RegExp(`\\${oldExt}$`, 'i').test(name)) name += oldExt
+              const dest = join(dirname(abs), name)
+              assertInsideWorkspace(ctx.imageAssets.studioDir, dest)
+              if (await stat(dest).catch(() => null)) {
+                send(res, 409, { error: `已存在同名文件：${name}` })
+                return
+              }
+              await rename(abs, dest)
+              await ctx.imageAssets.rebuildIndex()
+              send(res, 200, { ok: true, path: toWorkspaceRelative(ctx.imageAssets.root, dest), name })
+            } catch (err) {
+              const status = err instanceof PathEscapeError ? 403 : 500
+              send(res, status, { error: err instanceof Error ? err.message : String(err) })
+            }
+            return
+          }
+          // 素材库删除：{paths[]}，只删 .dsh/image-studio 内的文件
+          if (url.pathname === '/imagestudio/api/assets/delete') {
+            const paths = (Array.isArray(body.paths) ? body.paths : []).filter((p: unknown): p is string => typeof p === 'string' && !!p).slice(0, 200)
+            if (!paths.length) {
+              send(res, 400, { error: 'paths 必填（数组）' })
+              return
+            }
+            try {
+              let deleted = 0
+              const missing: string[] = []
+              for (const rel of paths) {
+                const abs = join(ctx.imageAssets.root, rel)
+                assertInsideWorkspace(ctx.imageAssets.studioDir, abs)
+                const st = await stat(abs).catch(() => null)
+                if (!st || !st.isFile()) {
+                  missing.push(rel)
+                  continue
+                }
+                await rm(abs)
+                deleted++
+              }
+              await ctx.imageAssets.rebuildIndex()
+              send(res, 200, { ok: true, deleted, missing })
+            } catch (err) {
+              const status = err instanceof PathEscapeError ? 403 : 500
+              send(res, status, { error: err instanceof Error ? err.message : String(err) })
+            }
             return
           }
           // 渠道管理：保存 = 真实注册 provider（不再只是 localStorage 摆设），
@@ -510,6 +723,22 @@ export function apply(ctx: Context): void {
             }
             if (url.pathname === '/imagestudio/api/generate') {
               const plan = body.planId ? ctx.imageSkills.plans.get(body.planId) : undefined
+              const force = body.force === true
+              // 评分/veto 闸门（SPEC §0.4 / §3）：带 planId 且 plan 未通过 → 默认 422，
+              // body 结构逐字遵守冻结契约；force:true 放行。无 planId 的裸生成不受此门限制。
+              if (plan && plan.selfCheck && plan.selfCheck.passed === false && !force) {
+                const threshold = ctx.imageSkills.get(plan.skillId)?.preset?.scoring?.threshold ?? 0
+                send(res, 422, {
+                  error: {
+                    code: 'PLAN_REJECTED',
+                    score: plan.selfCheck.score ?? 0,
+                    threshold,
+                    failures: plan.selfCheck.failures ?? [],
+                    veto: plan.selfCheck.veto ?? null,
+                  },
+                })
+                return
+              }
               const shot = plan && body.shotId ? plan.shots.find((s) => s.id === body.shotId) : plan?.shots[0]
               const refs = (Array.isArray(body.assets) ? body.assets : Array.isArray(body.refImages) ? body.refImages : []).filter(
                 (p: unknown): p is string => typeof p === 'string' && !!p,
@@ -526,6 +755,12 @@ export function apply(ctx: Context): void {
                   : undefined,
                 plan,
                 shotId: body.shotId,
+                force: body.force === true,
+              }
+              if (force) {
+                // TODO-merge：M1 的 pipeline 闸门合并后 ImageRequest.force 生效，
+                // 这里先在 UI 路由层透传，合并后自然进入 request 对象。
+                ;(reqImg as unknown as Record<string, unknown>).force = true
               }
               if (!reqImg.prompt) {
                 send(res, 400, { error: 'prompt or planId required' })
@@ -537,9 +772,30 @@ export function apply(ctx: Context): void {
                 jobStore.finish(job.id, 'done')
                 send(res, 200, { jobId: job.id, ...out })
               } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                // SPEC §0.4：plan 未通过且无 force:true → HTTP 422 + 结构化细节
+                if (err instanceof ToolArgsError && err.code === 'PLAN_REJECTED') {
+                  jobStore.finish(job.id, 'failed', err.message)
+                  send(res, 422, { jobId: job.id, error: { code: 'PLAN_REJECTED', ...err.details } })
+                  return
+                }
+                // 兜底：非结构化 PLAN_REJECTED 统一映射回冻结的 422 结构
+                if (msg.startsWith('PLAN_REJECTED')) {
+                  jobStore.finish(job.id, 'failed', msg)
+                  send(res, 422, {
+                    error: {
+                      code: 'PLAN_REJECTED',
+                      score: plan?.selfCheck?.score ?? 0,
+                      threshold: plan ? (ctx.imageSkills.get(plan.skillId)?.preset?.scoring?.threshold ?? 0) : 0,
+                      failures: plan?.selfCheck?.failures ?? [],
+                      veto: plan?.selfCheck?.veto ?? null,
+                    },
+                  })
+                  return
+                }
                 const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
-                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
-                send(res, aborted ? 200 : 500, { jobId: job.id, status: aborted ? 'canceled' : 'failed', error: err instanceof Error ? err.message : String(err) })
+                jobStore.finish(job.id, aborted ? 'canceled' : 'failed', msg)
+                send(res, aborted ? 200 : 500, { jobId: job.id, status: aborted ? 'canceled' : 'failed', error: msg })
               }
               return
             }
@@ -676,11 +932,15 @@ export function apply(ctx: Context): void {
               const durationSec = Math.max(1, Math.min(8, Number(body.durationSec) || 2))
               const job = jobStore.create({ kind: 'image', prompt: body.prompt || 'gif' })
               try {
+                const refs = (Array.isArray(body.assets) ? body.assets : []).filter((p: unknown): p is string => typeof p === 'string' && !!p)
                 const reqImg: ImageRequest = {
                   prompt: body.prompt || 'gif',
                   aspectRatio: body.aspectRatio || '1:1',
                   n,
-                  refUsage: 'analysis-only',
+                  refUsage: refs.length ? 'image-to-image' : 'analysis-only',
+                  refImages: refs.length
+                    ? refs.map((path: string) => ({ path, width: 0, height: 0, mime: 'image/png', sha256: '' }))
+                    : undefined,
                 }
                 const out = await persist(ctx, reqImg, body.providerId, job.controller.signal)
                 const images = (out as { images?: Array<{ path: string; width: number; height: number }> }).images || []
@@ -726,6 +986,7 @@ export function apply(ctx: Context): void {
                     width: ref.width,
                     height: ref.height,
                     frames: absFrames.length,
+                    frameList: images,
                     durationSec,
                   })
                 } finally {
@@ -735,6 +996,44 @@ export function apply(ctx: Context): void {
                 const aborted = job.controller.signal.aborted || (err as Error).name === 'AbortError'
                 jobStore.finish(job.id, aborted ? 'canceled' : 'failed', err instanceof Error ? err.message : String(err))
                 send(res, aborted ? 200 : 500, { jobId: job.id, status: aborted ? 'canceled' : 'failed', error: err instanceof Error ? err.message : String(err) })
+              }
+              return
+            }
+            // GIF 重编码：帧条挑选 + 帧延时(50-500ms)/循环次数 → 本地 encodeGif，不走 ffmpeg
+            if (url.pathname === '/imagestudio/api/gif/recode') {
+              const frames = (Array.isArray(body.frames) ? body.frames : []).filter((p: unknown): p is string => typeof p === 'string' && !!p).slice(0, 24)
+              if (!frames.length) {
+                send(res, 400, { error: 'frames 必填（至少 1 帧的工作区相对路径）' })
+                return
+              }
+              const delayMs = Math.max(50, Math.min(500, Number(body.delayMs) || 250))
+              const loop = Math.max(0, Math.min(65535, Number(body.loop) || 0))
+              try {
+                const decoded = []
+                for (const rel of frames) {
+                  const abs = join(ctx.imageAssets.root, rel)
+                  assertInsideWorkspace(ctx.imageAssets.root, abs)
+                  decoded.push(decodeImage(new Uint8Array(await readFile(abs))))
+                }
+                const bytes = Buffer.from(encodeGif(decoded, Math.max(2, Math.round(delayMs / 10)), loop))
+                const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), 'shot.gif', bytes, {
+                  width: decoded[0].width,
+                  height: decoded[0].height,
+                  mime: 'image/gif',
+                })
+                send(res, 200, {
+                  path: ref.path,
+                  url: ref.path,
+                  mime: 'image/gif',
+                  width: ref.width,
+                  height: ref.height,
+                  frames: decoded.length,
+                  delayMs,
+                  loop,
+                })
+              } catch (err) {
+                const status = err instanceof PathEscapeError ? 403 : 500
+                send(res, status, { error: err instanceof Error ? err.message : String(err) })
               }
               return
             }
@@ -1027,11 +1326,20 @@ export function apply(ctx: Context): void {
               return
             }
             if (url.pathname === '/imagestudio/api/describe') {
-              const text = await ctx.imagegen.describe(
-                (body.assets ?? []).map((path: string) => ({ path })),
-                body.instruction,
-              )
-              send(res, 200, { text })
+              const images = (body.assets ?? []).map((path: string) => ({ path }))
+              try {
+                // 支持指定视觉渠道；不指定时 resolveCapable 自动找能反推的渠道
+                if (body.providerId) {
+                  const provider = ctx.imagegen.resolveCapable(String(body.providerId), 'describe')
+                  const text = await provider.describe!(images, body.instruction)
+                  send(res, 200, { text, providerId: provider.id })
+                } else {
+                  const text = await ctx.imagegen.describe(images, body.instruction)
+                  send(res, 200, { text })
+                }
+              } catch (err) {
+                send(res, 400, { error: err instanceof Error ? err.message : String(err) })
+              }
               return
             }
             // UI 设计模式：AI 提议切片。模型按严格 JSON 输出，解析失败自动重试一次；

@@ -1,8 +1,0 @@
-prompt: Align dsh_imagestudio to NEW docs 00/01/02/03. Red lines already hold. Plan the next executable slice: job cancel/progress, gallery sha256, built-in video peer, canvas wires+generate, ecommerce plan-then-confirm.
-repo: /home/workdir/artifacts/dsh_imagestudio
-plan_file: /home/workdir/artifacts/dsh_imagestudio/sandbox/plan.md
-tasks_file: /home/workdir/artifacts/dsh_imagestudio/sandbox/tasks.json
-pr_loc: "100-400"
-sandbox_root: /home/workdir/artifacts/dsh_imagestudio/sandbox
-budget: 5
-skill_dir: /home/workdir/.grok/skills/plan-loop

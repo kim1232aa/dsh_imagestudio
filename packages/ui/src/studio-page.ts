@@ -49,7 +49,11 @@ button.primary:disabled{opacity:.5}
 .galtag:hover{border-color:var(--accent)}
 .galtag .x{margin-left:4px;color:#a33;cursor:pointer}
 .galcheck{position:absolute;top:8px;left:8px;width:18px;height:18px;z-index:3;accent-color:var(--accent)}
-#gallery .card{position:relative}
+#asGrid .card{position:relative}
+.gframe{position:relative;width:96px;flex:none;cursor:pointer}
+.gframe img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.gframe[data-off] img{opacity:.25}
+.gframe small{display:block;text-align:center;color:var(--muted);font-size:11px;margin-top:2px}
 .card{background:#181712;border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .card img,.card video{width:100%;display:block;background:#0a0908;max-height:220px;object-fit:contain}
 .card .cap{padding:10px 12px 4px;color:var(--ink);font-size:13px}
@@ -94,12 +98,15 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
   <a class="ghost" id="backHome" href="/" style="display:inline-flex;align-items:center;gap:4px;padding:0 12px;height:32px;text-decoration:none;flex:none">← 返回会话</a>
   <b>Image Studio</b>
   <nav class="tabs" id="tabs">
-    <button data-page="gen" data-on>普通生图</button>
-    <button data-page="gallery">画廊</button>
+    <button data-page="gen" data-on>生图</button>
+    <button data-page="video">视频</button>
+    <button data-page="gif">动图</button>
+    <button data-page="reverse">反推</button>
     <button data-page="canvas">无限画布</button>
+    <button data-page="uidesign">UI 设计</button>
+    <button data-page="assets">我的素材</button>
     <button data-page="ecom">电商</button>
     <button data-page="tpl">模板库</button>
-    <button data-page="uidesign">UI 设计</button>
     <button data-page="settings">设置</button>
   </nav>
   <div class="right">
@@ -125,9 +132,6 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
       <div class="row" id="modes">
         <button class="chip" data-mode="txt" data-on>文生图</button>
         <button class="chip" data-mode="img">图生图</button>
-        <button class="chip" data-mode="describe">反推</button>
-        <button class="chip" data-mode="gif">GIF</button>
-        <button class="chip" data-mode="video">视频</button>
       </div>
       <label>想法 / 提示词</label>
       <textarea id="brief" placeholder="例：明代科举舞弊案，夜审、账房、放榜。"></textarea>
@@ -141,10 +145,6 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
       <div class="row" id="ratios"></div>
       <label>清晰度</label>
       <div class="row" id="clarity"></div>
-      <div id="vidOpts" hidden>
-        <label>时长（秒）</label>
-        <div class="row" id="durations"></div>
-      </div>
       <label>张数</label>
       <div class="row" id="counts"></div>
       <label>负面词（skill 自动带上，可删）</label>
@@ -157,7 +157,7 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
         <button class="ghost" id="enhance">增强提示词</button>
       </div>
       <div class="score" id="scoreBox" hidden></div>
-      <p class="note">分数只是参考，出图按钮不会因为分数被关掉。电影三联默认建议 21:9 三张，你改得动。</p>
+      <p class="note">分数只是参考；方案没过评分时会被默认拦下，确认后可用「仍然出图」放行。电影三联默认建议 21:9 三张，你改得动。视频 / 动图 / 反推已拆成独立页签。</p>
       <div class="row" id="insp" style="margin-top:10px">
         <button class="chip" data-brief="明代科举舞弊案，夜审、账房、放榜。">夜审三联</button>
         <button class="chip" data-brief="雨后窗边人像，保留脸，只加胶片质感。">窗边人像</button>
@@ -175,32 +175,124 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
   </div>
 </section>
 
-<section class="page" data-page="gallery">
+<section class="page" data-page="video">
   <div class="empty" style="max-width:none;text-align:left">
-    <h3>画廊</h3>
-    <p id="galEmpty">从结果卡点「加入画廊」。按内容去重，不自动删图。</p>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0" id="galToolbar">
-      <input id="galSearch" placeholder="搜提示词 / 标题 / 标签" style="flex:1;min-width:160px"/>
-      <select id="galMode"><option value="">全部模式</option></select>
-      <select id="galModel"><option value="">全部模型</option></select>
-      <select id="galRatio"><option value="">全部比例</option></select>
-      <select id="galTag"><option value="">全部标签</option></select>
-      <select id="galSort"><option value="new">最新在前</option><option value="old">最早在前</option></select>
-      <button class="ghost" id="galView">瀑布流</button>
-      <button class="ghost" id="galBatch">批量管理</button>
+    <h3>视频工作台</h3>
+    <div class="row" id="vdModes">
+      <button class="chip" data-vdmode="txt" data-on>文生视频</button>
+      <button class="chip" data-vdmode="img">参考图视频</button>
     </div>
-    <div class="row" id="galBatchBar" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding:6px;border:1px dashed var(--line)">
-      <span class="note" id="galBatchCount">已选 0 张</span>
-      <input id="galBatchTag" placeholder="标签名" style="width:110px"/>
-      <button class="ghost" id="galBatchAdd">批量打标签</button>
-      <input id="galBatchOld" placeholder="旧标签" style="width:90px"/>
-      <input id="galBatchNew" placeholder="新标签" style="width:90px"/>
-      <button class="ghost" id="galBatchRename">重命名标签</button>
-      <button class="ghost" id="galBatchDl">批量下载</button>
+    <label>渠道（只列支持视频的）</label>
+    <select id="vdProvider" style="max-width:320px"></select>
+    <label>提示词</label>
+    <textarea id="vdPrompt" placeholder="例：账房烛火摇曳，镜头缓慢推近桌上的卷宗。"></textarea>
+    <div id="vdRefWrap" hidden>
+      <label>参考图（首帧，可选）</label>
+      <input id="vdRefFile" type="file" accept="image/*"/>
+      <div class="dropzone" id="vdRefDrop">拖一张图到这里作为首帧参考。上限 10MB。</div>
+      <div class="row" id="vdRefThumbs" style="margin-top:8px"></div>
     </div>
-    <div class="grid" id="gallery"></div>
-    <div class="row" style="justify-content:center;margin:10px 0">
-      <button class="ghost" id="galMore" style="display:none">加载更多</button>
+    <label>比例</label>
+    <div class="row" id="vdRatios"></div>
+    <label>时长（秒）</label>
+    <div class="row" id="vdDurations"></div>
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="primary" id="vdGo">提交生成</button>
+      <button class="ghost" id="vdCancel" hidden>取消</button>
+    </div>
+    <p class="progress" id="vdProg"></p>
+    <div id="vdOut"></div>
+  </div>
+</section>
+
+<section class="page" data-page="gif">
+  <div class="empty" style="max-width:none;text-align:left">
+    <h3>动图生成</h3>
+    <p class="note">两步走：① 先生成一组帧；② 在帧条里逐帧启停、调延时与循环次数，再合成 GIF 下载。</p>
+    <label>渠道</label>
+    <select id="gfProvider" style="max-width:320px"></select>
+    <label>提示词</label>
+    <textarea id="gfPrompt" placeholder="例：猫在账房里翻卷宗，动作连贯。"></textarea>
+    <label>参考图（可选）</label>
+    <input id="gfRefFile" type="file" accept="image/*"/>
+    <div class="row" id="gfRefThumbs" style="margin-top:8px"></div>
+    <label>帧数（2-8）</label>
+    <div class="row" id="gfCounts"></div>
+    <label>比例</label>
+    <div class="row" id="gfRatios"></div>
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="primary" id="gfGo">① 生成帧</button>
+    </div>
+    <div id="gfTune" hidden>
+      <label>帧条预览（点缩略图可启停，停用的帧不参与合成）</label>
+      <div class="row" id="gfFrames" style="gap:10px"></div>
+      <label>帧延时（毫秒，50–500）</label>
+      <input id="gfDelay" type="number" min="50" max="500" step="10" value="250" style="max-width:140px"/>
+      <label>循环次数（0 = 无限循环）</label>
+      <input id="gfLoop" type="number" min="0" max="100" step="1" value="0" style="max-width:140px"/>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <button class="primary" id="gfRecode">② 合成 GIF</button>
+      </div>
+    </div>
+    <div id="gfOut" style="margin-top:14px"></div>
+  </div>
+</section>
+
+<section class="page" data-page="reverse">
+  <div class="empty" style="max-width:720px">
+    <h3>反推提示词</h3>
+    <p class="note">上传或粘贴一张图，选视觉渠道与模板，反推出可复用的生图提示词。</p>
+    <label>图片</label>
+    <input id="rvFile" type="file" accept="image/*"/>
+    <div class="dropzone" id="rvDrop">拖图到这里，或 Ctrl+V 粘贴截图。上限 10MB。</div>
+    <div class="row" id="rvThumb" style="margin-top:8px"></div>
+    <label>视觉渠道</label>
+    <select id="rvProvider"></select>
+    <label>反推模板</label>
+    <div class="row" id="rvTpls">
+      <button class="chip" data-rvtpl="brief" data-on>简洁</button>
+      <button class="chip" data-rvtpl="detail">详细</button>
+      <button class="chip" data-rvtpl="storyboard">分镜</button>
+    </div>
+    <div class="row" style="margin-top:12px;gap:8px">
+      <button class="primary" id="rvGo">开始反推</button>
+    </div>
+    <label>结果</label>
+    <textarea id="rvOut" placeholder="反推结果会出现在这里" style="min-height:150px"></textarea>
+    <div class="row" style="margin-top:8px;gap:8px">
+      <button class="ghost" id="rvCopy">复制</button>
+      <button class="primary" id="rvUse">用此提示词生图</button>
+    </div>
+  </div>
+</section>
+
+<section class="page" data-page="assets">
+  <div class="empty" style="max-width:none;text-align:left">
+    <h3>我的素材</h3>
+    <p class="banner" id="asMigrate" hidden></p>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0">
+      <input id="asSearch" placeholder="搜文件名 / 路径" style="flex:1;min-width:160px"/>
+      <select id="asType">
+        <option value="all">全部</option>
+        <option value="generated">生成产物</option>
+        <option value="uploaded">上传素材</option>
+      </select>
+      <button class="ghost" id="asUploadBtn">上传素材…</button>
+      <input id="asUpload" type="file" accept="image/*,video/*" multiple hidden/>
+      <button class="ghost" id="asBatch">多选管理</button>
+      <button class="ghost" id="asRefresh">刷新</button>
+    </div>
+    <div class="row" id="asBatchBar" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding:6px;border:1px dashed var(--line)">
+      <span class="note" id="asSelCount">已选 0 个</span>
+      <button class="ghost" id="asAll">全选本页</button>
+      <button class="ghost" id="asZip">打包下载 ZIP</button>
+      <button class="ghost" id="asDelete">删除所选</button>
+    </div>
+    <div class="grid" id="asGrid"></div>
+    <div class="row" style="justify-content:center;margin:10px 0;align-items:center">
+      <button class="ghost" id="asPrev">上一页</button>
+      <span class="note" id="asPageInfo"></span>
+      <button class="ghost" id="asNext">下一页</button>
     </div>
   </div>
 </section>
@@ -262,9 +354,9 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
     <input id="colWidth" type="range" min="180" max="420" value="260"/>
     <h3 style="margin-top:18px">存储与数据</h3>
     <p class="note" id="storageInfo">存储信息读取中…</p>
-    <p class="note">图片和视频存本地 <code>.dsh/image-studio/</code> 目录，文件管理器可直接找到。历史 / 画廊 / 画布 / UI 设计数据分别存在浏览器本地（imagestudio.history / imagestudio.gallery / imagestudio.canvas:* / imagestudio.uidesign）。改存储路径：在宿主插件配置里改 <code>workspaceRoot</code> 后重启，新文件进新目录，旧目录文件原地保留，不会自动删除。</p>
+    <p class="note">图片和视频存本地 <code>.dsh/image-studio/</code> 目录，文件管理器可直接找到，也可在「我的素材」页管理。历史 / 画布 / UI 设计数据分别存在浏览器本地（imagestudio.history / imagestudio.canvas:* / imagestudio.uidesign）。改存储路径：在宿主插件配置里改 <code>workspaceRoot</code> 后重启，新文件进新目录，旧目录文件原地保留，不会自动删除。</p>
     <div class="row" style="margin-top:8px">
-      <button class="ghost" id="bkExport">导出备份（历史 / 画廊 / 画布 / 设置）</button>
+      <button class="ghost" id="bkExport">导出备份（历史 / 画布 / 设置）</button>
       <button class="ghost" id="bkImportBtn">还原备份…</button>
       <input id="bkImport" type="file" accept="application/json,.json" hidden/>
     </div>
@@ -334,7 +426,7 @@ ${uiDesignHtml}
     <button class="ghost" id="lbRef">转参考图</button>
     <button class="ghost" id="lbChat">加入对话</button>
     <button class="ghost" id="lbCanvas">加入画布</button>
-    <button class="ghost" id="lbGal">加入画廊</button>
+    <button class="ghost" id="lbGal">素材库查看</button>
   </div>
   <p class="note" id="lbCap">滚轮缩放 0.5x–3x · ← → 翻页 · Esc 关闭</p>
 </div>
@@ -351,9 +443,8 @@ const SKILL_UI = [
   {id:'photography-simulation', name:'摄影', hint:'任意地点拍照感'},
   {id:'character-casting', name:'角色', hint:'默认同人设一张，勾选才出三视图'}
 ];
-const DURATIONS = [2,4,6];
 const MAX_UPLOAD = 10 * 1024 * 1024;
-const state = { page:'gen', mode:'txt', skillId:'', ratio:'自动', clarity:'自动', n:1, durationSec:2, plan:null, lastImages:[], gallery:[], history:[], chat:false, lbScale:1, lbIndex:0, lbList:[] };
+const state = { page:'gen', mode:'txt', skillId:'', ratio:'自动', clarity:'自动', n:1, durationSec:2, plan:null, lastImages:[], history:[], chat:false, lbScale:1, lbIndex:0, lbList:[] };
 
 const $ = (id) => document.getElementById(id);
 function setStatus(t){ $('status').textContent = t; }
@@ -363,10 +454,9 @@ function loadLS(key, fallback){
 function saveLS(key, val){
   try { localStorage.setItem('imagestudio.'+key, JSON.stringify(val)); } catch (e) { console.warn('[imagestudio] saveLS failed:', e); }
 }
-state.gallery = loadLS('gallery', []);
-// 旧数据迁移：补 tags / createdAt，让筛选排序对老数据也生效。
-// 画廊一直是追加写入，数组顺序就是时间顺序，用它给老数据合成时间戳（最诚实的近似）
-state.gallery.forEach((g, i) => { if (g && g.path) { g.tags = g.tags || []; if (!g.createdAt) g.createdAt = i + 1; } });
+// 旧画廊迁移提示：gallery 页签已删除，能力由「我的素材」页承接（生成产物筛选视图）。
+// 旧 localStorage 画廊只含浏览器元数据，图片文件本身都在服务端素材库，这里只提示一次。
+state.legacyGalleryCount = (loadLS('gallery', []) || []).length;
 state.history = loadLS('history', []);
 state.channels = loadLS('channels', []);
 state.colWidth = loadLS('colWidth', 260);
@@ -383,7 +473,10 @@ async function api(path, body, signal){
     return { error: '网络中断或宿主服务未响应（'+(e && e.message ? e.message : e)+'）。确认 DSH 还在运行，恢复后重试即可。', network: true };
   }
   const text = await res.text();
-  try { return JSON.parse(text); } catch { return { error:text || ('HTTP '+res.status), status:res.status }; }
+  let out;
+  try { out = JSON.parse(text); } catch { return { error:text || ('HTTP '+res.status), status:res.status, httpStatus:res.status }; }
+  if (out && typeof out === 'object' && !Array.isArray(out) && out.httpStatus === undefined) out.httpStatus = res.status;
+  return out;
 }
 function chips(el, items, key, fmt){
   el.innerHTML = '';
@@ -426,21 +519,17 @@ function renderSkills(list){
   });
 }
 function sync(){
+  if (state.mode!=='txt' && state.mode!=='img') state.mode = 'txt';
   document.querySelectorAll('#tabs button').forEach(b=>b.toggleAttribute('data-on', b.dataset.page===state.page));
   document.querySelectorAll('.page').forEach(p=>p.toggleAttribute('data-on', p.dataset.page===state.page));
   document.querySelectorAll('#modes .chip').forEach(b=>b.toggleAttribute('data-on', b.dataset.mode===state.mode));
   chips($('ratios'), RATIOS, 'ratio');
   chips($('clarity'), CLARITY, 'clarity');
   chips($('counts'), COUNTS, 'n');
-  if ($('durations')) chips($('durations'), DURATIONS, 'durationSec');
   $('cols').classList.toggle('chat-open', state.chat);
   if ($('cols') && state.colWidth) $('cols').style.gridTemplateColumns = 'minmax(180px,'+state.colWidth+'px) minmax(0,1fr) '+(state.chat?'minmax(240px,320px)':'0fr');
   $('go').disabled = false;
   if ($('refWrap')) $('refWrap').hidden = state.mode!=='img';
-  if ($('vidOpts')) {
-    $('vidOpts').hidden = state.mode!=='video';
-    $('vidOpts').style.display = state.mode==='video' ? 'block' : 'none';
-  }
 }
 function showPlan(plan){
   const box = $('scoreBox');
@@ -450,7 +539,7 @@ function showPlan(plan){
   const reason = plan.reasoning ? Object.values(plan.reasoning).join('\\n') : '';
   box.hidden = false;
   box.innerHTML = '<b>方案自检 '+((sc.score!=null)?sc.score:'—')+' 分</b>'
-    + (sc.passed===false ? '<p>有弱项，但「就这样出图」仍然可用。</p>' : '')
+    + (sc.passed===false ? '<p>有弱项：直接出图会被默认拦下，到时点「仍然出图」可放行。</p>' : '')
     + (sc.failures&&sc.failures.length ? '<p>'+sc.failures.join('；')+'</p>' : '')
     + '<pre>'+reason+'\\n\\n'+shots+'</pre>';
   $('log').hidden = false;
@@ -468,242 +557,6 @@ function prettyName(img){
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-}
-// ---- 画廊 7.1：筛选/搜索/排序/标签/批量/分页 ----
-const galUi = { q:'', mode:'', model:'', ratio:'', tag:'', sort:'new', masonry:false, batch:false, sel:{}, limit:100 };
-const GAL_MODES = { txt:'文生图', img:'图生图', desc:'反推', gif:'GIF', video:'视频' };
-function galModeLabel(m){ return GAL_MODES[m] || m || '未知'; }
-function galFiltered(){
-  let list = (state.gallery||[]).filter(x => x && x.path);
-  if (galUi.mode) list = list.filter(x => (x.mode||'') === galUi.mode);
-  if (galUi.model) list = list.filter(x => (x.model||'') === galUi.model);
-  if (galUi.ratio) list = list.filter(x => (x.ratio||'') === galUi.ratio);
-  if (galUi.tag) list = list.filter(x => (x.tags||[]).indexOf(galUi.tag) >= 0);
-  if (galUi.q) {
-    const q = galUi.q.toLowerCase();
-    list = list.filter(x => (String(x.prompt||'')+' '+String(x.title||'')+' '+(x.tags||[]).join(' ')).toLowerCase().indexOf(q) >= 0);
-  }
-  list = list.slice().sort((a,b) => galUi.sort==='old' ? (a.createdAt||0)-(b.createdAt||0) : (b.createdAt||0)-(a.createdAt||0));
-  return list;
-}
-function galCounts(key, labelFn){
-  const counts = {};
-  (state.gallery||[]).forEach(x => {
-    if (!x || !x.path) return;
-    if (key === 'tags') { (x.tags||[]).forEach(t => { counts[t] = (counts[t]||0)+1; }); return; }
-    const v = x[key] || '';
-    if (v) counts[v] = (counts[v]||0)+1;
-  });
-  return Object.keys(counts).sort().map(v => ({ v, n: counts[v], label: labelFn ? labelFn(v) : v }));
-}
-function galFillSelect(id, allLabel, key, labelFn){
-  const selEl = $(id);
-  if (!selEl) return;
-  const cur = selEl.value;
-  const rows = galCounts(key, labelFn);
-  selEl.innerHTML = '<option value="">'+allLabel+'</option>'
-    + rows.map(r => '<option value="'+escapeHtml(r.v)+'">'+escapeHtml(r.label)+' ('+r.n+')</option>').join('');
-  selEl.value = cur;
-  if (cur && selEl.value !== cur) { selEl.value=''; galUi[{galMode:'mode',galModel:'model',galRatio:'ratio',galTag:'tag'}[id]] = ''; }
-}
-function renderGallery(){
-  const box = $('gallery');
-  if (!box) return;
-  galFillSelect('galMode', '全部模式', 'mode', galModeLabel);
-  galFillSelect('galModel', '全部模型', 'model');
-  galFillSelect('galRatio', '全部比例', 'ratio');
-  galFillSelect('galTag', '全部标签', 'tags');
-  const list = galFiltered();
-  const shown = list.slice(0, galUi.limit);
-  box.className = galUi.masonry ? 'grid masonry' : 'grid';
-  box.innerHTML = '';
-  shown.forEach(img => {
-    const d = document.createElement('div');
-    d.className = 'card';
-    const src = fileSrc(img);
-    const isVid = img.mime && String(img.mime).startsWith('video');
-    let inner = '';
-    if (galUi.batch) inner += '<input type="checkbox" class="galcheck"'+(galUi.sel[img.path]?' checked':'')+'/>';
-    inner += (src ? (isVid ? '<video src="'+src+'" muted'+(galUi.batch?'':' controls')+'></video>' : '<img src="'+src+'" alt="">') : '')
-      + '<div class="cap">'+(escapeHtml(img.prompt||img.title||prettyName(img)))
-      + '<small>'+prettyName(img)+' · '+galModeLabel(img.mode)+' · '+escapeHtml(img.ratio||'自动')+'</small></div>';
-    d.innerHTML = inner;
-    // 标签条：点击筛选，× 删除，+ 新增
-    const tagRow = document.createElement('div');
-    tagRow.style.padding = '0 10px 4px';
-    (img.tags||[]).forEach(t => {
-      const chip = document.createElement('span');
-      chip.className = 'galtag';
-      chip.innerHTML = escapeHtml(t)+'<span class="x" title="删除标签">×</span>';
-      chip.onclick = ev => {
-        ev.stopPropagation();
-        if ((ev.target).classList.contains('x')) {
-          img.tags = (img.tags||[]).filter(x => x !== t);
-          saveLS('gallery', state.gallery);
-          renderGallery();
-        } else {
-          galUi.tag = t; galUi.limit = 100; renderGallery();
-        }
-      };
-      tagRow.append(chip);
-    });
-    const addBtn = document.createElement('span');
-    addBtn.className = 'galtag';
-    addBtn.textContent = '+';
-    addBtn.title = '给这张图加标签';
-    addBtn.onclick = ev => {
-      ev.stopPropagation();
-      const inp = document.createElement('input');
-      inp.placeholder = '标签名，回车保存';
-      inp.style.cssText = 'width:100px;font-size:11px;padding:1px 6px';
-      tagRow.replaceChild(inp, addBtn);
-      inp.focus();
-      inp.addEventListener('pointerdown', e2 => e2.stopPropagation());
-      inp.onkeydown = e2 => {
-        if (e2.key !== 'Enter') return;
-        const v = inp.value.trim();
-        if (v && (img.tags||[]).indexOf(v) < 0) { img.tags = (img.tags||[]).concat([v]); }
-        saveLS('gallery', state.gallery);
-        renderGallery();
-      };
-    };
-    tagRow.append(addBtn);
-    d.append(tagRow);
-    if (galUi.batch) {
-      const cb = d.querySelector('.galcheck');
-      cb.onclick = ev => ev.stopPropagation();
-      cb.onchange = () => { if (cb.checked) galUi.sel[img.path] = 1; else delete galUi.sel[img.path]; galBatchCount(); };
-      d.style.cursor = 'pointer';
-      d.onclick = () => { cb.checked = !cb.checked; cb.onchange(); };
-    } else {
-      const acts = document.createElement('div');
-      acts.className = 'acts';
-      acts.append(mkAct('全屏', () => openLb(list, list.indexOf(img))));
-      acts.append(mkAct('当参考图', () => { state.lastImages = img.path?[img.path]:[]; state.mode='img'; state.page='gen'; sync(); setStatus('已设为参考图'); }));
-      acts.append(mkAct('拿去做视频', () => { state.lastImages = img.path?[img.path]:[]; state.mode='video'; state.page='gen'; sync(); setStatus('已带到视频首帧'); }));
-      acts.append(mkAct('加入画布', () => { state.page='canvas'; sync(); window.__cvAddImage && window.__cvAddImage(img.path); }));
-      acts.append(mkAct('加入对话', () => { $('chat').value = (($('chat').value||'') + String.fromCharCode(10) + (img.prompt||'')).trim(); state.chat = true; sync(); setStatus('已加入对话'); }));
-      d.append(acts);
-    }
-    box.append(d);
-  });
-  const more = $('galMore');
-  if (more) {
-    more.style.display = list.length > galUi.limit ? '' : 'none';
-    more.textContent = '加载更多（还剩 ' + (list.length - galUi.limit) + ' 张）';
-  }
-  const empty = $('galEmpty');
-  if (empty) empty.textContent = (state.gallery||[]).length
-    ? ('共 ' + (state.gallery||[]).length + ' 张' + (list.length !== (state.gallery||[]).length ? ' · 筛出 ' + list.length + ' 张' : '') + ' · 按内容去重，不自动删图')
-    : '从结果卡点「加入画廊」。按内容去重，不自动删图。';
-}
-function galBatchCount(){
-  const n = Object.keys(galUi.sel).length;
-  const el = $('galBatchCount');
-  if (el) el.textContent = '已选 ' + n + ' 张';
-}
-function galSelected(){
-  return (state.gallery||[]).filter(x => x && x.path && galUi.sel[x.path]);
-}
-async function imgContentHash(img){
-  if (img.hash) return img.hash;
-  if (!img.path) return '';
-  try {
-    const r = await fetch(fileSrc(img));
-    if (!r.ok) { console.warn('[imagestudio] hash fetch failed:', r.status, img.path); return ''; }
-    const buf = await r.arrayBuffer();
-    const d = await crypto.subtle.digest('SHA-256', buf);
-    const hex = Array.from(new Uint8Array(d)).map(b => b.toString(16).padStart(2, '0')).join('');
-    img.hash = hex;
-    return hex;
-  } catch (e) {
-    console.warn('[imagestudio] hash compute failed:', e && e.message, img.path);
-    return '';
-  }
-}
-async function addGallery(img){
-  state.gallery = state.gallery || [];
-  const stamped = Object.assign({}, img);
-  const h = await imgContentHash(stamped);
-  const dup = state.gallery.find(x => x && ((h && x.hash && x.hash === h) || (stamped.path && x.path === stamped.path)));
-  if (dup) { setStatus('画廊已有这张（按内容哈希去重）'); return; }
-  stamped.createdAt = stamped.createdAt || Date.now();
-  stamped.tags = stamped.tags || [];
-  stamped.mode = stamped.mode || state.mode || '';
-  stamped.ratio = stamped.ratio || state.ratio || '';
-  stamped.model = stamped.model || ((state.channels||[])[0]||{}).model || '';
-  state.gallery.push(stamped);
-  saveLS('gallery', state.gallery);
-  renderGallery();
-  setStatus('已加入画廊 · '+state.gallery.length+' 张');
-}
-// 老数据没有 hash 字段，后台分批补齐，之后即可按内容去重
-async function galBackfillHashes(){
-  const list = (state.gallery||[]).filter(x => x && x.path && !x.hash);
-  for (let i = 0; i < list.length; i++) {
-    await imgContentHash(list[i]);
-    if (i % 5 === 4) saveLS('gallery', state.gallery);
-  }
-  if (list.length) saveLS('gallery', state.gallery);
-}
-// 工具栏事件
-if ($('galSearch')) {
-  $('galSearch').addEventListener('input', ev => { galUi.q = ev.target.value.trim(); galUi.limit = 100; renderGallery(); });
-  [['galMode','mode'],['galModel','model'],['galRatio','ratio'],['galTag','tag']].forEach(pair => {
-    $(pair[0]).addEventListener('change', ev => { galUi[pair[1]] = ev.target.value; galUi.limit = 100; renderGallery(); });
-  });
-  $('galSort').addEventListener('change', ev => { galUi.sort = ev.target.value; renderGallery(); });
-  $('galView').onclick = () => {
-    galUi.masonry = !galUi.masonry;
-    $('galView').textContent = galUi.masonry ? '规整网格' : '瀑布流';
-    renderGallery();
-  };
-  $('galMore').onclick = () => { galUi.limit += 100; renderGallery(); };
-  $('galBatch').onclick = () => {
-    galUi.batch = !galUi.batch;
-    galUi.sel = {};
-    $('galBatchBar').style.display = galUi.batch ? 'flex' : 'none';
-    $('galBatch').style.borderColor = galUi.batch ? 'var(--accent)' : '';
-    galBatchCount();
-    renderGallery();
-  };
-  $('galBatchAdd').onclick = () => {
-    const v = $('galBatchTag').value.trim();
-    if (!v) { setStatus('先填标签名'); return; }
-    const sel = galSelected();
-    sel.forEach(img => { if ((img.tags||[]).indexOf(v) < 0) img.tags = (img.tags||[]).concat([v]); });
-    saveLS('gallery', state.gallery);
-    renderGallery();
-    setStatus('已给 ' + sel.length + ' 张打上「' + v + '」');
-  };
-  $('galBatchRename').onclick = () => {
-    const o = $('galBatchOld').value.trim(), n2 = $('galBatchNew').value.trim();
-    if (!o || !n2) { setStatus('旧标签和新标签都要填'); return; }
-    let n = 0;
-    (state.gallery||[]).forEach(img => {
-      if (!img.tags || img.tags.indexOf(o) < 0) return;
-      img.tags = img.tags.map(t => t === o ? n2 : t);
-      img.tags = img.tags.filter((t, i) => img.tags.indexOf(t) === i);
-      n++;
-    });
-    if (galUi.tag === o) galUi.tag = n2;
-    saveLS('gallery', state.gallery);
-    renderGallery();
-    setStatus('已把「' + o + '」改名为「' + n2 + '」· 涉及 ' + n + ' 张');
-  };
-  $('galBatchDl').onclick = () => {
-    const sel = galSelected();
-    if (!sel.length) { setStatus('先勾选要下载的图'); return; }
-    sel.forEach((img, i) => {
-      const a = document.createElement('a');
-      const name = (img.path||'').split('/').pop() || ('gallery-'+i+'.png');
-      a.href = fileSrc(img);
-      a.download = name;
-      document.body.append(a);
-      setTimeout(() => { a.click(); a.remove(); }, i * 300);
-    });
-    setStatus('开始下载 ' + sel.length + ' 个文件（浏览器可能询问多文件下载权限）');
-  };
 }
 function mkAct(label, fn){
   const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.onclick=fn; return b;
@@ -874,14 +727,6 @@ function renderHist(){
       setStatus('已回填参数');
     };
     row.append(b);
-    if (h.path) {
-      const g = document.createElement('button');
-      g.className = 'ghost';
-      g.textContent = '存画廊';
-      g.title = '把这条历史的图加入画廊';
-      g.onclick = ev => { ev.stopPropagation(); addGallery(h); };
-      row.append(g);
-    }
     const del = document.createElement('button');
     del.className = 'ghost';
     del.textContent = '×';
@@ -935,9 +780,9 @@ function cards(images, prompt){
     acts.className = 'acts';
     acts.append(mkAct('全屏', () => openLb(images, images.indexOf(img))));
     acts.append(mkAct('下载', () => { const a=document.createElement('a'); a.href=src; a.download=(img.path||'shot').split('/').pop(); a.click(); }));
-    acts.append(mkAct('加入画廊', () => addGallery({ ...img, prompt })));
+    acts.append(mkAct('素材库查看', () => { state.page='assets'; sync(); asLoad(); }));
     acts.append(mkAct('当参考图', () => { state.lastImages = img.path?[img.path]:[]; state.mode='img'; sync(); setStatus('已设为参考图'); }));
-    acts.append(mkAct('拿去做视频', () => { state.lastImages = img.path?[img.path]:[]; state.mode='video'; sync(); setStatus('已带到视频首帧'); }));
+    acts.append(mkAct('拿去做视频', () => { if (img.path) state.videoRef = img.path; state.page='video'; sync(); window.__vdRender && window.__vdRender(); setStatus('已带到视频首帧'); }));
     acts.append(mkAct('加入对话', () => { $('chat').value = (($('chat').value||'') + String.fromCharCode(10) + (prompt||'')).trim(); state.chat = true; sync(); setStatus('已加入对话'); }));
     acts.append(mkAct('复制提示词', () => { navigator.clipboard && navigator.clipboard.writeText(prompt||$('brief').value); setStatus('提示词已复制'); }));
     acts.append(mkAct('重新生成', () => { $('go').click(); }));
@@ -956,55 +801,46 @@ function cards(images, prompt){
     });
   });
 }
-async function loadGalleryFromAssets(){
-  try {
-    const listed = await api('/assets');
-    for (const img of (listed.images || [])) {
-      if (!img || !img.path) continue;
-      const hash = img.sha256 && img.sha256 !== 'pending' ? img.sha256 : '';
-      const dup = (state.gallery||[]).some(x => x && ((hash && x.hash && x.hash === hash) || x.path === img.path));
-      if (dup) continue;
-      const item = { ...img, prompt: img.title || img.path };
-      if (hash) item.hash = hash;
-      state.gallery.push(item);
-    }
-    saveLS('gallery', state.gallery);
-  } catch (e) { console.warn('[imagestudio] gallery add failed:', e); }
-  renderGallery();
-  const empty = $('galEmpty');
-  if (empty) empty.style.display = state.gallery.length ? 'none' : 'block';
-  galBackfillHashes().catch(e => console.warn('[imagestudio] hash backfill failed:', e && e.message));
-}
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   state.page=b.dataset.page;
+  if (state.page==='gen') consumeReverseDraft();
   sync();
-  if (state.page==='gallery') loadGalleryFromAssets();
+  if (state.page==='assets') asLoad();
+  if (state.page==='video' && window.__vdRender) window.__vdRender();
 });
 document.querySelectorAll('#modes .chip').forEach(b=>b.onclick=()=>{ state.mode=b.dataset.mode; sync(); });
 $('refFile') && ($('refFile').onchange = async () => {
   await ingestFiles(Array.from($('refFile').files||[]));
 });
+// 通用单文件上传（base64 JSON 通路），返回服务端相对路径或 ''
+async function uploadOne(f){
+  if (f.size > MAX_UPLOAD) { setStatus('超过大小限制 10MB：'+f.name); return ''; }
+  const buf = new Uint8Array(await f.arrayBuffer());
+  let b64 = '';
+  const chunk = 0x8000;
+  for (let i=0;i<buf.length;i+=chunk) b64 += String.fromCharCode.apply(null, buf.subarray(i,i+chunk));
+  const out = await api('/upload', { filename: f.name, mime: f.type || 'image/png', data: btoa(b64) });
+  if (!out.path) { setStatus('上传失败：'+String(out.error||'未知错误')); return ''; }
+  return out.path;
+}
+function thumbInto(box, path){
+  if (!box) return;
+  const im = document.createElement('img');
+  im.src = fileSrc({ path });
+  im.style.width = '72px';
+  im.style.height = '72px';
+  im.style.objectFit = 'cover';
+  im.style.borderRadius = '8px';
+  box.append(im);
+}
 async function ingestFiles(files){
   const thumbs = $('refThumbs');
   for (const f of files) {
-    if (f.size > MAX_UPLOAD) { setStatus('超过大小限制 10MB：'+f.name); continue; }
     if (!String(f.type||'').startsWith('image/')) { setStatus('只接受图片：'+f.name); continue; }
-    const buf = new Uint8Array(await f.arrayBuffer());
-    let b64 = '';
-    const chunk = 0x8000;
-    for (let i=0;i<buf.length;i+=chunk) b64 += String.fromCharCode.apply(null, buf.subarray(i,i+chunk));
-    const out = await api('/upload', { filename: f.name, mime: f.type || 'image/png', data: btoa(b64) });
-    if (out.path) {
-      state.lastImages = (state.lastImages||[]).concat([out.path]);
-      if (thumbs) {
-        const im = document.createElement('img');
-        im.src = fileSrc(out);
-        im.style.width = '72px';
-        im.style.height = '72px';
-        im.style.objectFit = 'cover';
-        im.style.borderRadius = '8px';
-        thumbs.append(im);
-      }
+    const path = await uploadOne(f);
+    if (path) {
+      state.lastImages = (state.lastImages||[]).concat([path]);
+      thumbInto(thumbs, path);
     }
   }
   if (files.length) setStatus('已上传参考图 · '+state.lastImages.length+' 张');
@@ -1027,6 +863,11 @@ document.addEventListener('paste', async (ev) => {
   if (!files.length) return;
   if (state.page==='canvas' && window.__cvAddFile) {
     files.forEach(f => window.__cvAddFile(f));
+    return;
+  }
+  if (state.page==='reverse' && window.__rvIngest) {
+    ev.preventDefault();
+    await window.__rvIngest(files);
     return;
   }
   state.mode = 'img'; state.page='gen'; sync();
@@ -1065,10 +906,10 @@ $('lbCanvas') && ($('lbCanvas').onclick = () => {
   window.__cvAddImage && window.__cvAddImage(it.path);
 });
 $('lbGal') && ($('lbGal').onclick = () => {
-  const it = (state.lbList||[])[state.lbIndex];
-  if (!it) return;
   closeLb();
-  addGallery(it);
+  state.page = 'assets';
+  sync();
+  asLoad();
 });
 document.addEventListener('keydown', (ev) => {
   if (!$('lb').hasAttribute('data-on')) return;
@@ -1097,55 +938,25 @@ async function think(){
 }
 $('think').onclick = think;
 $('rethink').onclick = think;
-$('go').onclick = async () => {
+// 422 语义（SPEC §0.4/§3）：带 planId 的方案未过评分/veto 时服务端默认拦下，
+// 分数框展示 score/threshold/failures/veto + 「仍然出图」（重发同一请求带 force:true）。
+function showRejected(err){
+  const box = $('scoreBox');
+  box.hidden = false;
+  box.innerHTML = '<b>方案被拦 · '+err.score+' 分 / 阈值 '+err.threshold+'</b>'
+    + (err.veto ? '<p>否决：'+escapeHtml(err.veto)+'</p>' : '')
+    + ((err.failures && err.failures.length) ? '<p>'+err.failures.map(escapeHtml).join('；')+'</p>' : '')
+    + '<p class="note">方案没过评分，默认不出图。确认要继续就点下面按钮强制出图。</p>';
+  const btn = document.createElement('button');
+  btn.className = 'primary';
+  btn.id = 'forceGo';
+  btn.textContent = '仍然出图';
+  btn.onclick = () => { box.hidden = true; doGenerate(true); };
+  box.append(btn);
+  setStatus('方案评分未过（'+err.score+'/'+err.threshold+'），已拦截。可点「仍然出图」强制生成');
+}
+async function doGenerate(force){
   const brief = $('brief').value.trim();
-  if (state.mode==='describe') {
-    if (!state.lastImages.length) { setStatus('先有一张图再反推'); return; }
-    setStatus('反推中…');
-    const out = await api('/describe', { assets: state.lastImages.slice(-1) });
-    $('brief').value = out.text || out.prompt || JSON.stringify(out);
-    setStatus('反推完成');
-    return;
-  }
-  if (state.mode==='gif') {
-    if (!brief) { setStatus('先写提示词'); return; }
-    const t0g = Date.now();
-    const tickg = setInterval(() => setStatus('GIF 编码中… '+Math.round((Date.now()-t0g)/1000)+'s'), 200);
-    try {
-      const ratio = state.ratio==='自动' ? '1:1' : state.ratio;
-      const out = await api('/gif', { prompt: brief, n: Math.max(2, state.n), aspectRatio: ratio, durationSec: 2 });
-      if (out.error) { setStatus(String(out.error)); return; }
-      cards([out], brief);
-      setStatus('完成 · '+Math.round((Date.now()-t0g)/1000)+'s');
-    } catch (e) {
-      setStatus('失败：'+String(e));
-    } finally { clearInterval(tickg); }
-    return;
-  }
-  if (state.mode==='video') {
-    if (!brief) { setStatus('先写提示词'); return; }
-    const t0v = Date.now();
-    const tickv = setInterval(() => setStatus('出视频中… '+Math.round((Date.now()-t0v)/1000)+'s'), 200);
-    setStatus('出视频中… 0s');
-    if ($('cancelGo')) $('cancelGo').hidden = false;
-    try {
-      const out = await api('/video', {
-        prompt: brief,
-        durationSec: state.durationSec || 2,
-        aspectRatio: state.ratio==='自动' ? '16:9' : state.ratio,
-        firstFramePath: state.lastImages[0]
-      });
-      if (out.error) { setStatus(String(out.error)); return; }
-      cards([{ path: out.path, mime:'video/mp4', width: out.width, height: out.height, title:'视频' }], brief);
-      setStatus('完成 · '+Math.round((Date.now()-t0v)/1000)+'s');
-    } catch (e) {
-      setStatus('失败：'+String(e));
-    } finally {
-      clearInterval(tickv);
-      if ($('cancelGo')) $('cancelGo').hidden = true;
-    }
-    return;
-  }
   if (!brief && !state.plan) { setStatus('先写提示词或先想方案'); return; }
   const t0 = Date.now();
   const tick = setInterval(() => setStatus('出图中… '+Math.round((Date.now()-t0)/1000)+'s'), 200);
@@ -1163,7 +974,7 @@ $('go').onclick = async () => {
     showPlan(state.plan);
   }
   const ratio = state.ratio==='自动' ? (state.plan && state.plan.shots && state.plan.shots[0] && state.plan.shots[0].aspectRatio) || '1:1' : state.ratio;
-  const out = await api('/generate', {
+  const payload = {
     planId,
     prompt: brief,
     aspectRatio: ratio,
@@ -1172,10 +983,16 @@ $('go').onclick = async () => {
     negative: $('negative').value.trim() || undefined,
     assets: state.lastImages || [],
     refUsage: (state.lastImages && state.lastImages.length) ? 'image-to-image' : 'analysis-only'
-  }, ac.signal);
+  };
+  if (force) payload.force = true;
+  const out = await api('/generate', payload, ac.signal);
+  if (out && out.error && typeof out.error === 'object' && out.error.code === 'PLAN_REJECTED') {
+    showRejected(out.error);
+    return;
+  }
   state.lastJobId = out.jobId;
   if (out.status === 'canceled') { setStatus('已取消'); return; }
-  if (out.error) { setStatus(String(out.error)); return; }
+  if (out.error) { setStatus(typeof out.error === 'string' ? out.error : JSON.stringify(out.error)); return; }
   state.lastModel = out.model || out.providerId || '';
   cards(out.images||[], brief);
   if (skillId==='cinema-dna-21x9x3' && (out.images||[]).length>=2) {
@@ -1191,7 +1008,8 @@ $('go').onclick = async () => {
     state.jobAbort = null;
     if ($('cancelGo')) $('cancelGo').hidden = true;
   }
-};
+}
+$('go').onclick = () => doGenerate(false);
 $('cancelGo') && ($('cancelGo').onclick = async () => {
   setStatus('正在取消…');
   try {
@@ -2134,6 +1952,424 @@ $('enhance') && ($('enhance').onclick = () => {
   renderSwitch();
   render();
 })();
+// ---- 反推草稿：reverse 页「用此提示词生图」经 localStorage 传递，gen 页消费 ----
+function consumeReverseDraft(){
+  const d = loadLS('reverseDraft', null);
+  if (!d || !d.prompt) return;
+  $('brief').value = d.prompt;
+  state.mode = 'txt';
+  try { localStorage.removeItem('imagestudio.reverseDraft'); } catch {}
+  setStatus('已回填反推提示词，直接点生成即可');
+}
+// 局部 chip 渲染器：不绑 state，给 video/gif 等新页签用
+function localChips(el, items, cur, onpick){
+  if (!el) return;
+  el.innerHTML = '';
+  items.forEach(it => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = String(it);
+    if (it === cur) b.dataset.on = '1';
+    b.onclick = () => { onpick(it); };
+    el.append(b);
+  });
+}
+// ---- 视频工作台 ----
+(function bindVideo(){
+  if (!$('vdGo')) return;
+  const VD_RATIOS = ['16:9','9:16','1:1'];
+  const VD_DURS = [2,4,6];
+  const vd = { mode:'txt', ratio:'16:9', durationSec:2 };
+  function render(){
+    document.querySelectorAll('#vdModes .chip').forEach(b=>b.toggleAttribute('data-on', b.dataset.vdmode===vd.mode));
+    $('vdRefWrap').hidden = vd.mode!=='img';
+    localChips($('vdRatios'), VD_RATIOS, vd.ratio, v => { vd.ratio = v; render(); });
+    localChips($('vdDurations'), VD_DURS, vd.durationSec, v => { vd.durationSec = v; render(); });
+    const thumbs = $('vdRefThumbs');
+    thumbs.innerHTML = '';
+    if (state.videoRef) thumbInto(thumbs, state.videoRef);
+  }
+  window.__vdRender = render;
+  document.querySelectorAll('#vdModes .chip').forEach(b=>b.onclick=()=>{ vd.mode=b.dataset.vdmode; render(); });
+  $('vdRefFile').onchange = async () => {
+    const f = ($('vdRefFile').files||[])[0];
+    if (!f) return;
+    const path = await uploadOne(f);
+    if (path) { state.videoRef = path; render(); setStatus('已设视频首帧参考图'); }
+    $('vdRefFile').value = '';
+  };
+  const z = $('vdRefDrop');
+  z.addEventListener('dragover', ev => { ev.preventDefault(); z.toggleAttribute('data-over', true); });
+  z.addEventListener('dragleave', () => z.toggleAttribute('data-over', false));
+  z.addEventListener('drop', async ev => {
+    ev.preventDefault(); z.toggleAttribute('data-over', false);
+    const f = Array.from(ev.dataTransfer.files||[]).find(x=>String(x.type||'').startsWith('image/'));
+    if (!f) { setStatus('只接受图片作首帧'); return; }
+    const path = await uploadOne(f);
+    if (path) { state.videoRef = path; render(); setStatus('已设视频首帧参考图'); }
+  });
+  function renderResult(out, prompt){
+    const box = $('vdOut');
+    box.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.style.maxWidth = '560px';
+    const src = fileSrc(out);
+    d.innerHTML = '<video src="'+src+'" controls playsinline style="width:100%;display:block;background:#000"></video>'
+      + '<div class="cap">'+escapeHtml((prompt||'').slice(0,48)||'视频')+'<small>'+(out.durationSec||'')+'s · '+(out.width||'')+'×'+(out.height||'')+' · '+escapeHtml(out.providerId||'')+'</small></div>';
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    acts.append(mkAct('下载', () => { const a=document.createElement('a'); a.href=src; a.download=(out.path||'clip.mp4').split('/').pop(); a.click(); }));
+    const tIn = document.createElement('input');
+    tIn.type = 'number'; tIn.min = '0'; tIn.step = '0.1'; tIn.value = '0.4'; tIn.title = '抽帧时间点（秒）';
+    tIn.style.width = '72px'; tIn.style.padding = '2px 6px';
+    acts.append(tIn);
+    acts.append(mkAct('抽帧', async () => {
+      setStatus('抽帧中…');
+      const r = await api('/video/frame', { path: out.path, t: Number(tIn.value)||0 });
+      if (r.error) { setStatus(String(r.error)); return; }
+      state.lastImages = [r.path]; state.mode = 'img'; state.page = 'gen'; sync();
+      thumbInto($('refThumbs'), r.path);
+      setStatus('已抽帧并带到生图页当参考图');
+    }));
+    acts.append(mkAct('全屏', () => openLb([{ path: out.path, mime: 'video/mp4', prompt }], 0)));
+    acts.append(mkAct('素材库查看', () => { state.page='assets'; sync(); asLoad(); }));
+    d.append(acts);
+    box.append(d);
+  }
+  $('vdGo').onclick = async () => {
+    const prompt = $('vdPrompt').value.trim();
+    if (!prompt) { setStatus('先写提示词'); return; }
+    const t0 = Date.now();
+    $('vdCancel').hidden = false;
+    $('vdProg').textContent = '已提交，等待生成… 0s';
+    const tick = setInterval(async () => {
+      let extra = '';
+      try {
+        const list = await api('/jobs');
+        const running = (list.jobs||[]).find(j=>j.kind==='video' && j.status==='running');
+        if (running) extra = ' · 任务运行中';
+      } catch {}
+      $('vdProg').textContent = '出视频中… '+Math.round((Date.now()-t0)/1000)+'s'+extra;
+    }, 2500);
+    try {
+      const out = await api('/video', {
+        providerId: $('vdProvider').value || undefined,
+        prompt,
+        durationSec: vd.durationSec || 2,
+        aspectRatio: vd.ratio || '16:9',
+        firstFramePath: vd.mode==='img' ? (state.videoRef || undefined) : undefined
+      });
+      if (out.error) { $('vdProg').textContent = String(out.error); setStatus('视频失败'); return; }
+      renderResult(out, prompt);
+      $('vdProg').textContent = '';
+      setStatus('视频完成 · '+Math.round((Date.now()-t0)/1000)+'s');
+    } catch (e) {
+      $('vdProg').textContent = '失败：'+String(e);
+    } finally {
+      clearInterval(tick);
+      $('vdCancel').hidden = true;
+    }
+  };
+  $('vdCancel').onclick = async () => {
+    setStatus('正在取消…');
+    try {
+      const list = await api('/jobs');
+      const running = (list.jobs||[]).find(j => j.status==='running');
+      if (running) await api('/cancel', { jobId: running.id });
+    } catch (e) { console.warn('[imagestudio] best-effort cancel failed:', e); }
+  };
+  render();
+})();
+// ---- 动图生成 GIF（两步流） ----
+(function bindGif(){
+  if (!$('gfGo')) return;
+  const GF_COUNTS = [2,3,4,6,8];
+  const GF_RATIOS = ['1:1','16:9','9:16','3:2'];
+  const gf = { n:4, ratio:'1:1', ref:'', frames:[] };
+  function renderForm(){
+    localChips($('gfCounts'), GF_COUNTS, gf.n, v => { gf.n = v; renderForm(); });
+    localChips($('gfRatios'), GF_RATIOS, gf.ratio, v => { gf.ratio = v; renderForm(); });
+  }
+  function renderFrames(){
+    const strip = $('gfFrames');
+    strip.innerHTML = '';
+    gf.frames.forEach((fr, i) => {
+      const d = document.createElement('div');
+      d.className = 'gframe';
+      if (!fr.on) d.setAttribute('data-off', '1');
+      d.title = '点击启停此帧';
+      d.innerHTML = '<img src="'+fileSrc({ path: fr.path })+'" alt=""/><small>帧 '+(i+1)+(fr.on?'':' · 停')+'</small>';
+      d.onclick = () => { fr.on = !fr.on; renderFrames(); };
+      strip.append(d);
+    });
+  }
+  function showGif(out, note){
+    const box = $('gfOut');
+    box.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.style.maxWidth = '420px';
+    const src = fileSrc(out);
+    d.innerHTML = '<img src="'+src+'" alt=""/>'
+      + '<div class="cap">GIF<small>'+escapeHtml(note||'')+'</small></div>';
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    acts.append(mkAct('下载 GIF', () => { const a=document.createElement('a'); a.href=src; a.download=(out.path||'shot.gif').split('/').pop(); a.click(); }));
+    acts.append(mkAct('全屏', () => openLb([{ path: out.path, mime: 'image/gif' }], 0)));
+    acts.append(mkAct('素材库查看', () => { state.page='assets'; sync(); asLoad(); }));
+    d.append(acts);
+    box.append(d);
+  }
+  $('gfRefFile').onchange = async () => {
+    const f = ($('gfRefFile').files||[])[0];
+    if (!f) return;
+    const path = await uploadOne(f);
+    if (path) { gf.ref = path; const th = $('gfRefThumbs'); th.innerHTML=''; thumbInto(th, path); setStatus('已设 GIF 参考图'); }
+    $('gfRefFile').value = '';
+  };
+  $('gfGo').onclick = async () => {
+    const prompt = $('gfPrompt').value.trim();
+    if (!prompt) { setStatus('先写提示词'); return; }
+    const t0 = Date.now();
+    const tick = setInterval(() => setStatus('生成帧中… '+Math.round((Date.now()-t0)/1000)+'s'), 200);
+    try {
+      const out = await api('/gif', {
+        providerId: $('gfProvider').value || undefined,
+        prompt,
+        n: gf.n,
+        aspectRatio: gf.ratio,
+        assets: gf.ref ? [gf.ref] : undefined,
+        durationSec: 2
+      });
+      if (out.error) { setStatus(String(out.error)); return; }
+      gf.frames = (out.frameList||[]).map(f => ({ path: f.path, on: true }));
+      $('gfTune').hidden = gf.frames.length < 1;
+      renderFrames();
+      showGif(out, '初版 · '+out.frames+' 帧 · 默认延时');
+      setStatus('帧已生成 · 调帧条后点「合成 GIF」');
+    } finally { clearInterval(tick); }
+  };
+  $('gfRecode').onclick = async () => {
+    const enabled = gf.frames.filter(f => f.on).map(f => f.path);
+    if (!enabled.length) { setStatus('至少启用 1 帧'); return; }
+    const delayMs = Math.max(50, Math.min(500, Number($('gfDelay').value)||250));
+    const loop = Math.max(0, Math.min(100, Number($('gfLoop').value)||0));
+    setStatus('合成 GIF 中…');
+    const out = await api('/gif/recode', { frames: enabled, delayMs, loop });
+    if (out.error) { setStatus(String(out.error)); return; }
+    showGif(out, enabled.length+' 帧 · '+delayMs+'ms · 循环 '+(loop||'无限')+' 次');
+    setStatus('GIF 已合成，可下载');
+  };
+  renderForm();
+})();
+// ---- 反推提示词 ----
+const RV_TPLS = {
+  brief: '用一句中文概括这张图的主体、动作、场景与氛围，直接输出可用的生图提示词，不要解释。',
+  detail: '详细描述这张图：主体、动作、构图、镜头、光线、色彩、材质与风格，输出可直接用于生图的完整中文提示词，不要解释。',
+  storyboard: '把这张图当作电影分镜来描述：景别、机位、镜头运动、光线、情绪，输出分镜脚本风格的中文生图提示词。'
+};
+(function bindReverse(){
+  if (!$('rvGo')) return;
+  const rv = { path:'', tpl:'brief' };
+  function renderTplChips(){
+    document.querySelectorAll('#rvTpls .chip').forEach(b=>b.toggleAttribute('data-on', b.dataset.rvtpl===rv.tpl));
+  }
+  document.querySelectorAll('#rvTpls .chip').forEach(b=>b.onclick=()=>{ rv.tpl=b.dataset.rvtpl; renderTplChips(); });
+  async function rvIngest(files){
+    const f = Array.from(files||[]).find(x=>String(x.type||'').startsWith('image/'));
+    if (!f) { setStatus('只接受图片'); return; }
+    const path = await uploadOne(f);
+    if (path) {
+      rv.path = path;
+      const th = $('rvThumb'); th.innerHTML = '';
+      thumbInto(th, path);
+      setStatus('图片已就绪，点「开始反推」');
+    }
+  }
+  window.__rvIngest = rvIngest;
+  $('rvFile').onchange = () => rvIngest(Array.from($('rvFile').files||[]));
+  const z = $('rvDrop');
+  z.addEventListener('dragover', ev => { ev.preventDefault(); z.toggleAttribute('data-over', true); });
+  z.addEventListener('dragleave', () => z.toggleAttribute('data-over', false));
+  z.addEventListener('drop', ev => { ev.preventDefault(); z.toggleAttribute('data-over', false); rvIngest(Array.from(ev.dataTransfer.files||[])); });
+  $('rvGo').onclick = async () => {
+    if (!rv.path) { setStatus('先上传或粘贴一张图'); return; }
+    setStatus('反推中…');
+    const out = await api('/describe', {
+      assets: [rv.path],
+      providerId: $('rvProvider').value || undefined,
+      instruction: RV_TPLS[rv.tpl] || RV_TPLS.brief
+    });
+    if (out.error) { setStatus(String(out.error)); return; }
+    $('rvOut').value = out.text || '';
+    setStatus('反推完成');
+  };
+  $('rvCopy').onclick = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText($('rvOut').value || '');
+    setStatus('已复制');
+  };
+  $('rvUse').onclick = () => {
+    const prompt = ($('rvOut').value || '').trim();
+    if (!prompt) { setStatus('还没有反推结果'); return; }
+    saveLS('reverseDraft', { prompt });
+    state.page = 'gen';
+    consumeReverseDraft();
+    sync();
+  };
+  renderTplChips();
+})();
+// ---- 我的素材（服务端数据） ----
+const asUi = { q:'', type:'all', offset:0, limit:24, batch:false, sel:{}, total:0, list:[] };
+async function asLoad(){
+  const grid = $('asGrid');
+  if (!grid) return;
+  const params = '?q='+encodeURIComponent(asUi.q)+'&type='+asUi.type+'&offset='+asUi.offset+'&limit='+asUi.limit;
+  const r = await api('/assets'+params);
+  if (r.error) { setStatus(String(r.error)); return; }
+  asUi.list = r.images || [];
+  asUi.total = r.total || 0;
+  asUi.sel = {};
+  renderAssets();
+}
+function asSelCount(){
+  const el = $('asSelCount');
+  if (el) el.textContent = '已选 '+Object.keys(asUi.sel).length+' 个';
+}
+function renderAssets(){
+  const grid = $('asGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  if (!asUi.list.length) grid.innerHTML = '<p class="note">没有素材。生成或上传后会出现在这里。</p>';
+  asUi.list.forEach(img => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    const src = fileSrc(img);
+    const isVid = img.mime && String(img.mime).startsWith('video');
+    let inner = '';
+    if (asUi.batch) inner += '<input type="checkbox" class="galcheck"'+(asUi.sel[img.path]?' checked':'')+'/>';
+    inner += (isVid ? '<video src="'+src+'" muted'+(asUi.batch?'':' controls')+'></video>' : '<img src="'+src+'" alt="" loading="lazy"/>')
+      + '<div class="cap">'+escapeHtml(img.title||img.path)
+      + '<small>'+(img.kind==='uploaded'?'上传素材':'生成产物')+' · '+escapeHtml(img.mime||'')+' · '+Math.round((img.size||0)/1024)+' KB</small></div>';
+    d.innerHTML = inner;
+    if (asUi.batch) {
+      const cb = d.querySelector('.galcheck');
+      cb.onclick = ev => ev.stopPropagation();
+      cb.onchange = () => { if (cb.checked) asUi.sel[img.path] = 1; else delete asUi.sel[img.path]; asSelCount(); };
+      d.style.cursor = 'pointer';
+      d.onclick = () => { cb.checked = !cb.checked; cb.onchange(); };
+    } else {
+      const acts = document.createElement('div');
+      acts.className = 'acts';
+      acts.append(mkAct('全屏', () => openLb(asUi.list, asUi.list.indexOf(img))));
+      acts.append(mkAct('下载', () => { const a=document.createElement('a'); a.href=src; a.download=(img.path||'file').split('/').pop(); a.click(); }));
+      acts.append(mkAct('重命名', async () => {
+        const name = (window.prompt('新文件名', img.title || '') || '').trim();
+        if (!name) return;
+        const r = await api('/assets/rename', { path: img.path, name });
+        if (r.error) { setStatus(String(r.error)); return; }
+        setStatus('已重命名为 '+r.name);
+        asLoad();
+      }));
+      acts.append(mkAct('删除', async () => {
+        if (!window.confirm('确定删除「'+(img.title||img.path)+'」？文件会从磁盘删掉。')) return;
+        const r = await api('/assets/delete', { paths: [img.path] });
+        if (r.error) { setStatus(String(r.error)); return; }
+        setStatus('已删除 1 个素材');
+        asLoad();
+      }));
+      acts.append(mkAct('当参考图', () => { state.lastImages = [img.path]; state.mode='img'; state.page='gen'; sync(); thumbInto($('refThumbs'), img.path); setStatus('已设为参考图'); }));
+      d.append(acts);
+    }
+    grid.append(d);
+  });
+  const info = $('asPageInfo');
+  if (info) info.textContent = '共 '+asUi.total+' 个 · 第 '+(Math.floor(asUi.offset/asUi.limit)+1)+' / '+Math.max(1, Math.ceil(asUi.total/asUi.limit))+' 页';
+  $('asPrev').disabled = asUi.offset <= 0;
+  $('asNext').disabled = asUi.offset + asUi.limit >= asUi.total;
+  asSelCount();
+}
+(function bindAssets(){
+  if (!$('asGrid')) return;
+  // 旧画廊一次性迁移提示
+  const mig = $('asMigrate');
+  if (mig && state.legacyGalleryCount && !loadLS('galleryMigrated', 0)) {
+    mig.hidden = false;
+    mig.innerHTML = '<b>检测到旧画廊数据 '+state.legacyGalleryCount+' 条</b>（浏览器本地）。画廊页签已并入素材库：生成产物在「生成产物」筛选里，旧画廊记录只是元数据，图片文件都在素材库。 ';
+    const clear = document.createElement('button');
+    clear.className = 'ghost';
+    clear.textContent = '清除旧画廊数据';
+    clear.onclick = () => {
+      try { localStorage.removeItem('imagestudio.gallery'); } catch {}
+      saveLS('galleryMigrated', 1);
+      mig.hidden = true;
+      setStatus('已清除旧画廊本地数据（图片文件不受影响）');
+    };
+    const keep = document.createElement('button');
+    keep.className = 'ghost';
+    keep.textContent = '保留，不再提示';
+    keep.onclick = () => { saveLS('galleryMigrated', 1); mig.hidden = true; };
+    mig.append(clear, keep);
+  }
+  $('asSearch').addEventListener('input', ev => { asUi.q = ev.target.value.trim(); asUi.offset = 0; asLoad(); });
+  $('asType').addEventListener('change', ev => { asUi.type = ev.target.value; asUi.offset = 0; asLoad(); });
+  $('asRefresh').onclick = () => asLoad();
+  $('asPrev').onclick = () => { asUi.offset = Math.max(0, asUi.offset - asUi.limit); asLoad(); };
+  $('asNext').onclick = () => { if (asUi.offset + asUi.limit < asUi.total) { asUi.offset += asUi.limit; asLoad(); } };
+  $('asBatch').onclick = () => {
+    asUi.batch = !asUi.batch;
+    asUi.sel = {};
+    $('asBatchBar').style.display = asUi.batch ? 'flex' : 'none';
+    $('asBatch').style.borderColor = asUi.batch ? 'var(--accent)' : '';
+    renderAssets();
+  };
+  $('asAll').onclick = () => {
+    asUi.list.forEach(img => { asUi.sel[img.path] = 1; });
+    renderAssets();
+  };
+  $('asZip').onclick = () => {
+    const paths = Object.keys(asUi.sel);
+    if (!paths.length) { setStatus('先勾选要打包的素材'); return; }
+    const a = document.createElement('a');
+    a.href = '/imagestudio/api/assets/zip?paths=' + paths.map(encodeURIComponent).join(',');
+    a.download = 'imagestudio-assets.zip';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setStatus('开始打包下载 '+paths.length+' 个素材');
+  };
+  $('asDelete').onclick = async () => {
+    const paths = Object.keys(asUi.sel);
+    if (!paths.length) { setStatus('先勾选要删除的素材'); return; }
+    if (!window.confirm('确定删除所选 '+paths.length+' 个素材？文件会从磁盘删掉。')) return;
+    const r = await api('/assets/delete', { paths });
+    if (r.error) { setStatus(String(r.error)); return; }
+    setStatus('已删除 '+r.deleted+' 个'+(r.missing && r.missing.length ? ' · '+r.missing.length+' 个已不存在' : ''));
+    asLoad();
+  };
+  $('asUploadBtn').onclick = () => $('asUpload').click();
+  $('asUpload').onchange = async () => {
+    const files = Array.from($('asUpload').files || []);
+    for (const f of files) {
+      if (f.size > MAX_UPLOAD) { setStatus('超过大小限制 10MB：'+f.name); continue; }
+      const fd = new FormData();
+      fd.append('file', f, f.name || 'upload.png');
+      setStatus('上传中：'+f.name);
+      try {
+        const res = await fetch('/imagestudio/api/assets/upload', { method: 'POST', body: fd });
+        const out = await res.json();
+        if (out.error) setStatus('上传失败：'+out.error);
+        else setStatus('已上传 '+out.name);
+      } catch (e) {
+        setStatus('上传失败：'+String(e));
+      }
+    }
+    $('asUpload').value = '';
+    asUi.type = 'all';
+    $('asType').value = 'all';
+    asLoad();
+  };
+})();
 (async () => {
   const meta = await api('/meta');
   renderSkills(meta.skills||[]);
@@ -2152,8 +2388,20 @@ $('enhance') && ($('enhance').onclick = () => {
   }
   if (!providers.length) setStatus('还没有渠道。到顶部「设置」填地址和密钥环境变量名。mock 未列出时仍可点「就这样出图」。');
   else setStatus(providers.some(p=>String(p.id).includes('mock')) ? 'mock 已连接 · 可直接出图' : '已连接 '+providers.length+' 个渠道');
+  // 新页签的渠道下拉：按能力过滤（视频 / 反推 / 生图）
+  function fillCapable(id, pred, autoLabel){
+    const sel = $(id);
+    if (!sel) return;
+    const rows = providers.filter(pred);
+    sel.innerHTML = '<option value="">'+autoLabel+'</option>'
+      + rows.map(p => '<option value="'+escapeHtml(p.id)+'">'+escapeHtml(p.id)+'（'+escapeHtml(p.model||'')+'）</option>').join('');
+  }
+  const hasKind = (p, re) => (p.kinds||[]).some(k => re.test(k));
+  fillCapable('vdProvider', p => hasKind(p, /video/), '自动（找支持视频的）');
+  fillCapable('rvProvider', p => hasKind(p, /describe/), '自动（找支持反推的）');
+  fillCapable('gfProvider', p => hasKind(p, /image/), '自动（默认渠道）');
+  consumeReverseDraft();
   renderHist();
-  renderGallery();
   sync();
 })();
 ${uiDesignJs}
