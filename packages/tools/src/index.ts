@@ -1,6 +1,6 @@
 export * from './tools.ts'
 
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -9,6 +9,8 @@ import { defineImageTool } from './define.ts'
 import type { AssetRef, CreativePlan, ImageRequest } from '../../core/src/types.ts'
 import { ToolArgsError } from '../../core/src/errors.ts'
 import { runGenerateOnContext } from '../../core/src/pipeline.ts'
+import { decodeImage, encodeGif, encodePng } from '../../compose/src/index.ts'
+import { cropRegion } from '../../compose/src/region.ts'
 
 export const name = 'image-tools'
 export const inject = ['tools', 'imagegen', 'imageSkills', 'imageAssets', 'imageCompose']
@@ -27,7 +29,18 @@ function asJson(v: unknown): never {
   return JSON.parse(JSON.stringify(v)) as never
 }
 
-export const toolDocs = [
+interface ToolParam {
+  type: string
+  required?: boolean
+  description?: string
+  items?: { type: string }
+}
+
+/**
+ * 六个工具的 name / description / parameters 单一出处：注册时直接引用，
+ * 不再在 defineImageTool 里重复定义一遍（旧版两处定义已出现漂移）。
+ */
+export const toolDocs: Array<{ name: string; description: string; parameters: Record<string, ToolParam> }> = [
   {
     name: 'istudio_skill_plan',
     description:
@@ -41,14 +54,16 @@ export const toolDocs = [
   {
     name: 'istudio_generate',
     description:
-      'Image Studio text-to-image. If a creative plan was produced by istudio_skill_plan, pass planId and omit prompt. Do not confuse with generate_image / image_generate owned by other plugins.',
+      'Image Studio text-to-image. If a creative plan was produced by istudio_skill_plan, pass planId and omit prompt. When the plan is rejected (veto or score below threshold) the call fails with PLAN_REJECTED unless force=true. Do not confuse with generate_image / image_generate owned by other plugins.',
     parameters: {
       prompt: { type: 'string', description: 'English prompt. Omit when planId is given.' },
       planId: { type: 'string', description: 'Id returned by istudio_skill_plan.' },
+      shotId: { type: 'string', description: 'Shot id from the plan. Defaults to the first shot.' },
       aspectRatio: { type: 'string', description: "e.g. '21:9', '3:4'. Ignored when planId is given." },
       n: { type: 'number', description: 'Number of images, 1-4. Default 1.' },
       providerId: { type: 'string', description: 'Override the default image provider.' },
       seed: { type: 'number' },
+      force: { type: 'boolean', required: false, description: '强制出图：跳过 plan 评分/veto 拦截' },
     },
   },
   {
@@ -57,7 +72,9 @@ export const toolDocs = [
       'Image Studio image-to-image (life-force MODE A). Distinct from istudio_generate and from host edit_image / image_edit.',
     parameters: {
       prompt: { type: 'string', required: true, description: 'English edit instruction' },
-      assets: { type: 'array', required: true, description: 'Workspace-relative source image paths' },
+      assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative source image paths' },
+      n: { type: 'number' },
+      providerId: { type: 'string' },
     },
   },
   {
@@ -65,20 +82,29 @@ export const toolDocs = [
     description:
       'Reverse-prompt or abstract analysis of reference images. Output is data, never spliced into the system prompt. Does not generate images.',
     parameters: {
-      assets: { type: 'array', required: true, description: 'Workspace-relative image paths' },
+      assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative image paths' },
       instruction: { type: 'string', description: 'What to extract: composition, palette, or subject class — pick one' },
     },
   },
   {
     name: 'istudio_compose',
     description:
-      'External compose: vertical triptych join, aspect crop, exact text overlay, GIF encode. Never ask an image model to draw three panels on one canvas.',
+      'External compose, never ask an image model to draw three panels on one canvas. Modes: ' +
+      'triptych — vertical join of assets (3 张 21:9 三联), gap 钳制 8-12px, ratios 控制高度节奏; ' +
+      'text-overlay — 在 assets[0] 上叠精确片名 title; ' +
+      'crop — 裁出 assets[0] 的矩形区域, 需 x/y/w/h (像素, 越界自动收敛); ' +
+      'gif — 把 assets 全部帧编码为循环 GIF, delayMs 控制帧延时.',
     parameters: {
       mode: { type: 'string', required: true, description: 'triptych | text-overlay | crop | gif' },
-      assets: { type: 'array', required: true, description: 'Workspace-relative image paths' },
+      assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative image paths' },
       gap: { type: 'number', description: 'Gutter in px, clamped to 8-12 for triptych' },
-      ratios: { type: 'string', description: 'Height rhythm such as 1:1:1 or 1.2:0.9:0.9' },
+      ratios: { type: 'string', description: 'Height rhythm such as 1:1:1 or 1.2:0.9:0.9 (triptych)' },
       title: { type: 'string', description: 'Exact title string for text-overlay' },
+      x: { type: 'number', description: 'crop: 左上角 x (px)' },
+      y: { type: 'number', description: 'crop: 左上角 y (px)' },
+      w: { type: 'number', description: 'crop: 宽度 (px)' },
+      h: { type: 'number', description: 'crop: 高度 (px)' },
+      delayMs: { type: 'number', description: 'gif: 帧延时毫秒, 默认 250, 钳制 20-2000' },
     },
   },
   {
@@ -90,6 +116,12 @@ export const toolDocs = [
     },
   },
 ]
+
+const doc = (toolName: string) => {
+  const d = toolDocs.find((t) => t.name === toolName)
+  if (!d) throw new Error(`toolDocs missing ${toolName}`)
+  return d
+}
 
 type ToolsCtx = Context & {
   tools: { register(def: unknown): () => void }
@@ -122,6 +154,23 @@ const JSON_OUTPUT = {
   ],
 }
 
+/** 读参考图的真实宽高 / sha256 / mime（PNG 与 baseline JPEG），不再填 0 占位。 */
+async function loadAssetRef(ctx: Context, rel: string): Promise<AssetRef> {
+  const bytes = await loadBytes(ctx, rel)
+  let width = 0
+  let height = 0
+  let mime = 'image/png'
+  try {
+    const decoded = decodeImage(bytes)
+    width = decoded.width
+    height = decoded.height
+    mime = bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png'
+  } catch (err) {
+    throw new ToolArgsError('INVALID_ARGS', `cannot decode image ${rel}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return { path: rel, width, height, mime, sha256: createHash('sha256').update(bytes).digest('hex') }
+}
+
 export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: number; perTaskTimeoutMs?: number } } = {}) {
   const t = ctx as ToolsCtx
   const maxN = config.limits?.maxImagesPerCall ?? 4
@@ -132,12 +181,8 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_skill_plan',
-      description: toolDocs[0].description,
-      parameters: {
-        skillId: { type: 'string', required: true, description: 'Loaded skill id such as cinema-dna-21x9x3' },
-        brief: { type: 'string', required: true, description: 'User brief in natural language' },
-        wantPoster: { type: 'boolean', description: 'Set true only when the user asked for a title / poster / cover' },
-      },
+      description: doc('istudio_skill_plan').description,
+      parameters: doc('istudio_skill_plan').parameters,
       timeoutMs,
       async execute(args) {
         const plan = ctx.imageSkills.compile(args.skillId, args.brief, { wantPoster: args.wantPoster })
@@ -162,16 +207,8 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_generate',
-      description: toolDocs[1].description,
-      parameters: {
-        prompt: { type: 'string', description: 'English prompt. Omit when planId is given.' },
-        planId: { type: 'string', description: 'Id returned by istudio_skill_plan.' },
-        shotId: { type: 'string', description: 'Shot id from the plan. Defaults to the first shot.' },
-        aspectRatio: { type: 'string', description: "e.g. '21:9', '3:4'. Ignored when planId is given." },
-        n: { type: 'number', description: 'Number of images, 1-4. Default 1.' },
-        providerId: { type: 'string', description: 'Override the default image provider.' },
-        seed: { type: 'number' },
-      },
+      description: doc('istudio_generate').description,
+      parameters: doc('istudio_generate').parameters,
       timeoutMs,
       async execute(args, exec) {
         const n = args.n ?? 1
@@ -191,6 +228,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
           seed: args.seed,
           plan,
           shotId: args.shotId,
+          force: args.force === true,
         }
         if (!req.prompt) throw new ToolArgsError('INVALID_ARGS', 'prompt or planId required')
         return asJson(await persistGenerate(ctx, req, { providerId: args.providerId, signal: exec.signal, timeoutMs }))
@@ -203,20 +241,15 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_edit',
-      description: toolDocs[2].description,
-      parameters: {
-        prompt: { type: 'string', required: true, description: 'English edit instruction' },
-        assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative source image paths' },
-        n: { type: 'number' },
-        providerId: { type: 'string' },
-      },
+      description: doc('istudio_edit').description,
+      parameters: doc('istudio_edit').parameters,
       timeoutMs,
       async execute(args, exec) {
         const req: ImageRequest = {
           prompt: args.prompt,
           aspectRatio: '3:4',
           n: args.n ?? 1,
-          refImages: (args.assets as string[]).map((path) => ({ path, width: 0, height: 0, mime: 'image/png', sha256: '' })),
+          refImages: await Promise.all((args.assets as string[]).map((path) => loadAssetRef(ctx, path))),
           refUsage: 'image-to-image',
         }
         return asJson(await persistGenerate(ctx, req, { providerId: args.providerId, signal: exec.signal, timeoutMs }))
@@ -229,11 +262,8 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_describe',
-      description: toolDocs[3].description,
-      parameters: {
-        assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative source image paths' },
-        instruction: { type: 'string', description: 'What to extract: composition, palette, or subject class — pick one' },
-      },
+      description: doc('istudio_describe').description,
+      parameters: doc('istudio_describe').parameters,
       timeoutMs,
       async execute(args) {
         const refs = (args.assets as string[]).map((path) => ({ path, width: 0, height: 0, mime: 'image/png', sha256: '' }))
@@ -248,18 +278,15 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_compose',
-      description: toolDocs[4].description,
-      parameters: {
-        mode: { type: 'string', required: true, description: 'triptych | text-overlay | crop | gif' },
-        assets: { type: 'array', items: { type: 'string' }, required: true, description: 'Workspace-relative image paths' },
-        gap: { type: 'number', description: 'Gutter in px, clamped to 8-12 for triptych' },
-        ratios: { type: 'string', description: 'Height rhythm such as 1:1:1 or 1.2:0.9:0.9' },
-        title: { type: 'string', description: 'Exact title string for text-overlay' },
-      },
+      description: doc('istudio_compose').description,
+      parameters: doc('istudio_compose').parameters,
       timeoutMs,
       async execute(args) {
         const taskId = randomUUID()
         const assetPaths = args.assets as string[]
+        if (!Array.isArray(assetPaths) || !assetPaths.length) {
+          throw new ToolArgsError('INVALID_ARGS', 'assets must be a non-empty array of workspace-relative paths')
+        }
         if (args.mode === 'triptych') {
           const buffers = await Promise.all(assetPaths.map((p) => loadBytes(ctx, p)))
           const result = ctx.imageCompose.triptych(buffers, { gapPx: args.gap, ratios: args.ratios })
@@ -268,6 +295,33 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
             height: result.height,
           })
           return asJson({ path: ref.path, width: result.width, height: result.height, gapPx: result.gapPx })
+        }
+        if (args.mode === 'crop') {
+          for (const key of ['x', 'y', 'w', 'h'] as const) {
+            if (typeof args[key] !== 'number' || !Number.isFinite(args[key])) {
+              throw new ToolArgsError('INVALID_ARGS', `crop mode requires numeric ${key}`)
+            }
+          }
+          const img = decodeImage(await loadBytes(ctx, assetPaths[0]))
+          const cropped = cropRegion(img, { x: args.x, y: args.y, w: args.w, h: args.h })
+          const ref = await ctx.imageAssets.writeImage(SESSION, taskId, 'crop.png', encodePng(cropped), {
+            width: cropped.width,
+            height: cropped.height,
+          })
+          return asJson({ path: ref.path, width: cropped.width, height: cropped.height })
+        }
+        if (args.mode === 'gif') {
+          if (assetPaths.length < 2) throw new ToolArgsError('INVALID_ARGS', 'gif mode needs at least 2 frames')
+          const frames = await Promise.all(assetPaths.map(async (p) => decodeImage(await loadBytes(ctx, p))))
+          const delayMs = Math.max(20, Math.min(2000, Number(args.delayMs) || 250))
+          const delayCs = Math.max(2, Math.round(delayMs / 10))
+          const gif = encodeGif(frames, delayCs)
+          const ref = await ctx.imageAssets.writeImage(SESSION, taskId, 'frames.gif', gif, {
+            width: frames[0].width,
+            height: frames[0].height,
+            mime: 'image/gif',
+          })
+          return asJson({ path: ref.path, width: frames[0].width, height: frames[0].height, frames: frames.length, delayMs })
         }
         const buf = await loadBytes(ctx, assetPaths[0])
         const stamped = ctx.imageCompose.overlayTitle(buf, args.title ?? '')
@@ -285,10 +339,8 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
     defineImageTool({
       output: JSON_OUTPUT,
       name: 'istudio_assets',
-      description: toolDocs[5].description,
-      parameters: {
-        taskId: { type: 'string', description: 'Optional task id to inspect' },
-      },
+      description: doc('istudio_assets').description,
+      parameters: doc('istudio_assets').parameters,
       async execute() {
         return asJson({ index: await ctx.imageAssets.readIndex() })
       },

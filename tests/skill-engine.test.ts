@@ -9,7 +9,7 @@ import { compilePlan, countChangedDimensions, staticCheck } from '../packages/sk
 import { createPipeline, installBuiltinHooks, runGenerate } from '../packages/core/src/pipeline.ts'
 import { MockImageProvider } from '../packages/provider-mock/src/index.ts'
 import { assertInsideWorkspace } from '../packages/assets/src/paths.ts'
-import { PathEscapeError } from '../packages/core/src/errors.ts'
+import { PathEscapeError, ToolArgsError } from '../packages/core/src/errors.ts'
 import { ImageEventBus } from '../packages/core/src/events.ts'
 import { TOOL_NAMES } from '../packages/tools/src/tools.ts'
 import { toolDocs } from '../packages/tools/src/index.ts'
@@ -163,7 +163,7 @@ describe('AC-SK skill engine', () => {
     assert.ok(changed >= 4, `changed=${changed}`)
   })
 
-  it('DOC-00-6 score below threshold still calls provider', async () => {
+  it('DOC-00-6 score below threshold: force:true still calls provider (SPEC §0.4)', async () => {
     const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
     const plan = compilePlan(skills[0], '明代科举', { forceFailScore: true })
     const p = createPipeline()
@@ -176,9 +176,68 @@ describe('AC-SK skill engine', () => {
       n: 1,
       refUsage: 'analysis-only',
       plan,
+      force: true,
     })
     assert.ok(mock.calls >= 1)
     assert.ok(!('passed' in out && out.passed === false))
+  })
+
+  it('SPEC-0.4 rejected plan without force throws PLAN_REJECTED and provider is not called', async () => {
+    const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
+    const plan = compilePlan(skills[0], '明代科举', { forceFailScore: true })
+    const p = createPipeline()
+    installBuiltinHooks(p)
+    const mock = new MockImageProvider()
+    p.registry.register('mock', mock)
+    const err = await runGenerate(p, {
+      prompt: plan.shots[0].prompt,
+      aspectRatio: plan.shots[0].aspectRatio,
+      n: 1,
+      refUsage: 'analysis-only',
+      plan,
+    }).then(
+      () => null,
+      (e: unknown) => e as ToolArgsError,
+    )
+    assert.ok(err instanceof ToolArgsError)
+    assert.equal(err.code, 'PLAN_REJECTED')
+    assert.match(err.message, /^PLAN_REJECTED: score \d+\/82; failures: /)
+    assert.equal(err.details?.score, plan.selfCheck.score)
+    assert.equal(err.details?.threshold, 82)
+    assert.deepEqual(err.details?.failures, plan.selfCheck.failures)
+    assert.equal(mock.calls, 0, 'provider must not be called')
+  })
+
+  it('SPEC-0.4 veto plan reports veto in PLAN_REJECTED', async () => {
+    const skills = await loadSkills(skillsDir, ['cinema-dna-21x9x3'])
+    const plan = compilePlan(skills[0], '明代科举', { forceVeto: '明显 CG / 游戏宣传图' })
+    const p = createPipeline()
+    installBuiltinHooks(p)
+    const mock = new MockImageProvider()
+    p.registry.register('mock', mock)
+    const err = await runGenerate(p, {
+      prompt: plan.shots[0].prompt,
+      aspectRatio: plan.shots[0].aspectRatio,
+      n: 1,
+      refUsage: 'analysis-only',
+      plan,
+    }).then(
+      () => null,
+      (e: unknown) => e as ToolArgsError,
+    )
+    assert.ok(err instanceof ToolArgsError)
+    assert.match(err.message, /; veto: 明显 CG \/ 游戏宣传图$/)
+    assert.equal(err.details?.veto, '明显 CG / 游戏宣传图')
+    assert.equal(mock.calls, 0)
+  })
+
+  it('SPEC-0.4 bare generate without plan is not gated', async () => {
+    const p = createPipeline()
+    installBuiltinHooks(p)
+    const mock = new MockImageProvider()
+    p.registry.register('mock', mock)
+    await runGenerate(p, { prompt: '裸生成', aspectRatio: '1:1', n: 1, refUsage: 'analysis-only' })
+    assert.ok(mock.calls >= 1)
   })
 
   it('AC-SK-18 veto overrides score', async () => {
