@@ -282,6 +282,38 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
+  it('ecom page exposes a provider/model selector wired into /ecom/confirm', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      assert.match(res.text, /id="ecomProvider"/)
+      assert.match(res.text, /ecomProvider.*value \|\| undefined|providerId.*ecomProvider/s)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('canvas config node embeds model/ratio/clarity/n controls in the card itself (no hidden cvGen panel)', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      // 旧的隐藏横条机制必须已经移除：不应再出现 id="cvGen" 容器。
+      assert.doesNotMatch(res.text, /id="cvGen"/)
+      // renderCfgControls 把参数控件挂进节点卡片本体，data-cf 标记每个字段。
+      assert.match(res.text, /data-cf="providerId"/)
+      assert.match(res.text, /data-cf="ratio"/)
+      assert.match(res.text, /data-cf="clarity"/)
+      assert.match(res.text, /data-cf="n"/)
+      assert.match(res.text, /data-cf="send"/)
+      // 模型下拉必须把渠道的真实 model 名拼进选项文案，不能只显示渠道 id。
+      assert.match(res.text, /p\.model/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('DOC02 ratios are the fixed 9 in order', async () => {
     const { dir, host } = await withHost()
     try {

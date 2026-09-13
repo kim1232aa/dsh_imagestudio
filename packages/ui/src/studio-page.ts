@@ -67,7 +67,9 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 .hist{display:flex;flex-direction:column;gap:8px}
 .hist button{text-align:left;background:#14130f;border:1px solid var(--line);border-radius:8px;padding:8px;color:inherit;cursor:pointer}
 .canvas{position:relative;flex:1;background:#0d0c0a;overflow:hidden}
-.node{position:absolute;background:#1b1a16;border:1px solid var(--line);border-radius:10px;padding:10px;min-width:220px;width:auto;max-width:280px;cursor:grab}
+.node{position:absolute;background:#1b1a16;border:1px solid var(--line);border-radius:10px;padding:10px;min-width:220px;width:auto;max-width:360px;cursor:grab}
+.node .cfgbox textarea{min-height:40px;resize:vertical}
+.node .cfgbox select,.node .cfgbox input,.node .cfgbox textarea{background:#14130f;border:1px solid var(--line);border-radius:6px;color:inherit;padding:3px 6px;font-size:12px}
 .node .note{white-space:nowrap;margin:4px 0 0}
 .empty{padding:24px;color:var(--muted)}
 .empty{padding:24px;color:var(--muted)}
@@ -314,7 +316,6 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
       <span class="note" id="cvHint">开箱已连好文本→配置。滚轮缩放，空格拖动画布，双击/右键建节点，点线可选中删除，Ctrl+Z 撤销，Ctrl+C/V/D 复制粘贴副本，Delete 删除。</span>
     </div>
     <div class="canvas" id="canvas"></div>
-    <div id="cvGen" style="display:none;padding:8px 12px;border-top:1px solid var(--line)"></div>
   </div>
 </section>
 
@@ -372,6 +373,8 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
     <input id="sku" placeholder="青瓷茶盏"/>
     <label>用途（可勾选，可改数量）</label>
     <div id="ecomUses" class="row"></div>
+    <label>模型</label>
+    <select id="ecomProvider"><option value="">默认渠道</option></select>
     <div class="row" style="margin-top:12px">
       <button class="ghost" id="ecomPreview">生成套图预览</button>
       <button id="ecomConfirm" hidden>确认生成 <span id="ecomCount"></span></button>
@@ -807,6 +810,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   sync();
   if (state.page==='assets') asLoad();
   if (state.page==='video' && window.__vdRender) window.__vdRender();
+  if (state.page==='canvas' && window.__cvRefreshProviders) window.__cvRefreshProviders();
 });
 document.querySelectorAll('#modes .chip').forEach(b=>b.onclick=()=>{ state.mode=b.dataset.mode; sync(); });
 $('refFile') && ($('refFile').onchange = async () => {
@@ -1187,6 +1191,15 @@ $('enhance') && ($('enhance').onclick = () => {
     box.append(lab);
   });
   let plan = null;
+  window.__ecomRefreshProviders = () => {
+    const sel = $('ecomProvider');
+    if (!sel) return;
+    const providers = state.providers||[];
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">默认渠道</option>' + providers.map(p =>
+      '<option value="'+escapeHtml(p.id)+'">'+escapeHtml(p.id)+(p.model?' ('+escapeHtml(p.model)+')':'')+'</option>').join('');
+    if (providers.some(p => p.id === cur)) sel.value = cur;
+  };
   function picked(){
     return uses.map(u => {
       const on = box.querySelector('input[type=checkbox][data-id="'+u.id+'"]');
@@ -1208,7 +1221,8 @@ $('enhance') && ($('enhance').onclick = () => {
   $('ecomConfirm').onclick = async () => {
     if (!plan) { setStatus('先预览计划'); return; }
     setStatus('套图生成中…');
-    const out = await api('/ecom/confirm', { plan });
+    const providerId = $('ecomProvider').value || undefined;
+    const out = await api('/ecom/confirm', { plan, providerId });
     if (out.error) { setStatus(String(out.error)); return; }
     const dest = $('ecomOut');
     dest.innerHTML = '';
@@ -1395,33 +1409,42 @@ $('enhance') && ($('enhance').onclick = () => {
     applyView();
     setStatus('已回正到全部内容（' + Math.round(scale*100) + '%）');
   }
-  function renderGenPanel(){
-    const box = $('cvGen');
-    if (!box) return;
-    const cfg = sel.size===1 ? project.nodes.find(n=>sel.has(n.id) && n.type==='config') : null;
-    if (!cfg) { box.style.display='none'; box.innerHTML=''; return; }
-    box.style.display = 'block';
-    const ratios = ['自动','1:1','3:4','4:3','9:16','16:9','2:3','3:2','21:9'];
-    const clarities = ['自动','1K','2K'];
+  // 生成配置的参数控件直接嵌进节点卡片本体（不再靠选中后弹出的隐藏横条），
+  // 模型下拉显示 "渠道id (真实model名)"，与 Nova Studio 原版对齐。
+  const RATIOS = ['自动','1:1','3:4','4:3','9:16','16:9','2:3','3:2','21:9'];
+  const CLARITIES = ['自动','1K','2K'];
+  function renderCfgControls(cfg, el){
     const providers = (state.providers||[]);
-    box.innerHTML = '<b>生成器</b> · 节点 ' + escapeHtml(cfg.id) +
-      ' <label style="display:inline">提示词补充 <input id="cgPrompt" value="'+escapeHtml(cfg.text||'')+'" placeholder="可空，连线文本优先"/></label>' +
-      ' <label style="display:inline">比例 <select id="cgRatio">' + ratios.map(r=>'<option'+(cfg.ratio===r?' selected':'')+'>'+r+'</option>').join('') + '</select></label>' +
-      ' <label style="display:inline">清晰度 <select id="cgClarity">' + clarities.map(c=>'<option'+(cfg.clarity===c?' selected':'')+'>'+c+'</option>').join('') + '</select></label>' +
-      ' <label style="display:inline">张数 <input id="cgN" type="number" min="1" max="4" value="'+(cfg.n||1)+'" style="width:56px"/></label>' +
-      ' <label style="display:inline">渠道 <select id="cgProvider"><option value="">默认渠道</option>' + providers.map(p=>'<option value="'+escapeHtml(p.id)+'"'+(cfg.providerId===p.id?' selected':'')+'>'+escapeHtml(p.id)+'</option>').join('') + '</select></label>' +
-      ' <button class="primary" id="cgSend">发送出图</button>';
+    const box = document.createElement('div');
+    box.className = 'cfgbox';
+    box.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:4px';
+    const providerOpts = '<option value="">默认渠道</option>' + providers.map(p =>
+      '<option value="'+escapeHtml(p.id)+'"'+(cfg.providerId===p.id?' selected':'')+'>'
+      + escapeHtml(p.id) + (p.model ? ' ('+escapeHtml(p.model)+')' : '')
+      + '</option>').join('');
+    box.innerHTML =
+      '<textarea data-cf="prompt" placeholder="提示词补充，可空，连线文本优先" style="min-height:40px">'+escapeHtml(cfg.text||'')+'</textarea>'
+      + '<label style="display:flex;align-items:center;gap:4px">模型 <select data-cf="providerId" style="flex:1;min-width:0">'+providerOpts+'</select></label>'
+      + '<div class="row" style="gap:4px">'
+      + '<label style="display:flex;align-items:center;gap:4px;flex:1">比例 <select data-cf="ratio" style="flex:1">' + RATIOS.map(r=>'<option'+(( (cfg.ratio||'自动')===r)?' selected':'')+'>'+r+'</option>').join('') + '</select></label>'
+      + '<label style="display:flex;align-items:center;gap:4px;flex:1">清晰度 <select data-cf="clarity" style="flex:1">' + CLARITIES.map(c=>'<option'+(((cfg.clarity||'自动')===c)?' selected':'')+'>'+c+'</option>').join('') + '</select></label>'
+      + '<label style="display:flex;align-items:center;gap:4px">张数 <input data-cf="n" type="number" min="1" max="4" value="'+(cfg.n||1)+'" style="width:48px"/></label>'
+      + '</div>'
+      + '<button class="primary" data-cf="send">发送出图</button>';
     const commit = () => {
       record();
-      cfg.text = ($('cgPrompt').value||'').trim() || undefined;
-      cfg.ratio = $('cgRatio').value === '自动' ? undefined : $('cgRatio').value;
-      cfg.clarity = $('cgClarity').value === '自动' ? undefined : $('cgClarity').value;
-      cfg.n = Math.max(1, Math.min(4, Number($('cgN').value)||1));
-      cfg.providerId = $('cgProvider').value || undefined;
-      persist(); render();
+      cfg.text = (box.querySelector('[data-cf="prompt"]').value||'').trim() || undefined;
+      cfg.ratio = box.querySelector('[data-cf="ratio"]').value === '自动' ? undefined : box.querySelector('[data-cf="ratio"]').value;
+      cfg.clarity = box.querySelector('[data-cf="clarity"]').value === '自动' ? undefined : box.querySelector('[data-cf="clarity"]').value;
+      cfg.n = Math.max(1, Math.min(4, Number(box.querySelector('[data-cf="n"]').value)||1));
+      cfg.providerId = box.querySelector('[data-cf="providerId"]').value || undefined;
+      persist();
     };
-    ['cgPrompt','cgRatio','cgClarity','cgN','cgProvider'].forEach(id => { const el = $(id); el && el.addEventListener('change', commit); });
-    $('cgSend').onclick = () => sendFromConfig(cfg);
+    box.querySelectorAll('select[data-cf], input[data-cf]').forEach(f => f.addEventListener('change', commit));
+    box.querySelector('[data-cf="prompt"]').addEventListener('change', commit);
+    box.querySelectorAll('[data-cf]').forEach(f => f.addEventListener('pointerdown', ev => ev.stopPropagation()));
+    box.querySelector('[data-cf="send"]').addEventListener('click', ev => { ev.stopPropagation(); commit(); sendFromConfig(cfg); });
+    el.append(box);
   }
   async function sendFromConfig(cfg){
     setStatus('画布出图中…');
@@ -1561,7 +1584,7 @@ $('enhance') && ($('enhance').onclick = () => {
       el.style.left = n.x+'px';
       el.style.top = n.y+'px';
       if (sel.has(n.id)) el.style.borderColor = 'var(--accent)';
-      el.style.width = (n.w || 180) + 'px';
+      el.style.width = (n.w || (n.type==='config' ? 260 : 180)) + 'px';
       const ins = incoming(n.id).length;
       if (n.type==='text'){
         el.innerHTML = '<b>文本</b><textarea data-field="text" style="min-height:64px;margin-top:6px">'+escapeHtml(n.text||'')+'</textarea>';
@@ -1603,7 +1626,8 @@ $('enhance') && ($('enhance').onclick = () => {
         const src = n.path ? '/imagestudio/api/file?path='+encodeURIComponent(n.path) : '';
         el.innerHTML = '<b>视频</b>'+(src?'<video src="'+src+'" muted style="width:160px;display:block;margin-top:6px"></video>':'<div class="note">视频节点</div>');
       } else {
-        el.innerHTML = '<b>生成配置</b><div class="note">入边 '+ins+' · '+(n.ratio||'自动')+' · '+(n.clarity||'自动')+' · '+(n.n||1)+'张</div><div class="note">选中后在下方生成器调参</div>';
+        el.innerHTML = '<b>生成配置</b><div class="note">入边 '+ins+'</div>';
+        renderCfgControls(n, el);
       }
       const outp = document.createElement('i');
       outp.className = 'port out';
@@ -1702,7 +1726,6 @@ $('enhance') && ($('enhance').onclick = () => {
       world.append(el);
     });
     drawWires();
-    renderGenPanel();
   }
   function drawWires(){
     const svg = $('cvWires');
@@ -1951,6 +1974,7 @@ $('enhance') && ($('enhance').onclick = () => {
   });
   renderSwitch();
   render();
+  window.__cvRefreshProviders = () => { if (state.page==='canvas') render(); };
 })();
 // ---- 反推草稿：reverse 页「用此提示词生图」经 localStorage 传递，gen 页消费 ----
 function consumeReverseDraft(){
@@ -2375,12 +2399,14 @@ function renderAssets(){
   renderSkills(meta.skills||[]);
   const providers = meta.providers||[];
   state.providers = providers;
+  window.__cvRefreshProviders && window.__cvRefreshProviders();
+  window.__ecomRefreshProviders && window.__ecomRefreshProviders();
   // 局部重绘渠道选择器：不支持遮罩编辑的协议/模型不进列表（验收 7.6）
   const maskSel = $('cvMaskProvider');
   if (maskSel) {
     const capable = providers.filter(p => p.canMaskEdit);
     maskSel.innerHTML = capable.length
-      ? capable.map(p => '<option value="'+escapeHtml(p.id)+'">'+escapeHtml(p.id)+'</option>').join('')
+      ? capable.map(p => '<option value="'+escapeHtml(p.id)+'">'+escapeHtml(p.id)+(p.model?'（'+escapeHtml(p.model)+'）':'')+'</option>').join('')
       : '<option value="">无可用渠道</option>';
     maskSel.title = capable.length
       ? '局部重绘渠道 · 仅显示支持遮罩编辑的 ' + capable.length + ' 个（共 ' + providers.length + ' 个渠道）'
