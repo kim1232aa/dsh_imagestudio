@@ -103,7 +103,33 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
-  it('DOC-00-6 low score plan still generates (score is advisory)', async () => {
+  it('SPEC-0.4 rejected plan without force is HTTP 422 PLAN_REJECTED (provider not called)', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
+      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', '夜审账房放榜三镜')
+      plan.selfCheck = { score: 40, passed: false, failures: ['below 82'], veto: '测试 veto' }
+      host.ctx.imageSkills.plans.set(plan.id, plan)
+      const before = mock.calls
+      const gen = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/generate',
+        JSON.stringify({ planId: plan.id }),
+      )
+      assert.equal(gen.status, 422, JSON.stringify(gen.json))
+      const out = gen.json as { error?: { code?: string; score?: number; threshold?: number; failures?: string[]; veto?: string | null } }
+      assert.equal(out.error?.code, 'PLAN_REJECTED')
+      assert.equal(out.error?.score, 40)
+      assert.equal(out.error?.threshold, 82)
+      assert.deepEqual(out.error?.failures, ['below 82'])
+      assert.equal(out.error?.veto, '测试 veto')
+      assert.equal(mock.calls, before, 'provider must not be called')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('DOC-00-6 low score plan with force:true still generates (SPEC §0.4)', async () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
@@ -114,12 +140,32 @@ describe('AC-UI routes on host webServer', () => {
       const gen = await host.web.fetch(
         'POST',
         '/imagestudio/api/generate',
-        JSON.stringify({ planId: plan.id }),
+        JSON.stringify({ planId: plan.id, force: true }),
       )
       assert.equal(gen.status, 200)
       const out = gen.json as { images?: unknown[]; error?: string }
       assert.ok(Array.isArray(out.images) && out.images.length >= 1, JSON.stringify(out))
       assert.ok(mock.calls > before)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('PLAN_REJECTED 422 carries veto and workbench shows 仍然出图', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', 'veto probe')
+      plan.selfCheck = { score: 55, passed: false, failures: ['f1'], veto: '三镜同机位' }
+      host.ctx.imageSkills.plans.set(plan.id, plan)
+      const res = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ planId: plan.id }))
+      assert.equal(res.status, 422)
+      const err = (res.json as { error: { veto: string | null } }).error
+      assert.equal(err.veto, '三镜同机位')
+      // UI 侧：422 交互（分数框 + 仍然出图按钮 + force 重发）在页面脚本里
+      const page = await host.web.fetch('GET', '/imagestudio')
+      assert.match(page.text, /仍然出图/)
+      assert.match(page.text, /PLAN_REJECTED/)
+      assert.match(page.text, /force\s*=\s*true|payload\.force/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -219,14 +265,18 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
-  it('DOC02 pages: top tabs 普通生图/画廊/无限画布/电商', async () => {
+  it('DOC02 pages: top tabs 生图/视频/动图/反推/无限画布/UI设计/我的素材/电商/模板库/设置', async () => {
     const { dir, host } = await withHost()
     try {
       const res = await host.web.fetch('GET', '/imagestudio')
       assert.equal(res.status, 200)
-      for (const label of ['普通生图', '画廊', '无限画布', '电商', '设置']) {
+      for (const label of ['生图', '视频', '动图', '反推', '无限画布', 'UI 设计', '我的素材', '电商', '模板库', '设置']) {
         assert.match(res.text, new RegExp(label))
       }
+      for (const page of ['gen', 'video', 'gif', 'reverse', 'canvas', 'uidesign', 'assets', 'ecom', 'tpl', 'settings']) {
+        assert.match(res.text, new RegExp(`data-page="${page}"`))
+      }
+      assert.doesNotMatch(res.text, /data-page="gallery"/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -299,6 +349,183 @@ describe('AC-UI routes on host webServer', () => {
       assert.doesNotMatch(res.text, /这个我不能生成/)
       assert.doesNotMatch(res.text, /低于 82/)
       assert.match(res.text, /就这样出图/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('assets: generated listing + search + type filter + pagination', async () => {
+    const { dir, host } = await withHost()
+    try {
+      await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ prompt: 'asset listing probe', aspectRatio: '1:1', n: 2 }))
+      const all = await host.web.fetch('GET', '/imagestudio/api/assets')
+      assert.equal(all.status, 200)
+      const body = all.json as { images: Array<{ path: string; kind: string; sha256: string }>; total: number; offset: number; limit: number }
+      assert.ok(body.total >= 2)
+      assert.ok(body.images.every((i) => i.kind === 'generated'))
+      assert.ok(body.images[0].sha256, 'page slice carries sha256')
+      const genOnly = await host.web.fetch('GET', '/imagestudio/api/assets?type=generated')
+      assert.ok((genOnly.json as { total: number }).total >= 2)
+      const upOnly = await host.web.fetch('GET', '/imagestudio/api/assets?type=uploaded')
+      assert.equal((upOnly.json as { total: number }).total, 0)
+      const q = await host.web.fetch('GET', '/imagestudio/api/assets?q=shot-1')
+      assert.ok((q.json as { total: number }).total >= 1)
+      const paged = await host.web.fetch('GET', '/imagestudio/api/assets?offset=1&limit=1')
+      const pb = paged.json as { images: unknown[]; total: number; offset: number; limit: number }
+      assert.equal(pb.images.length, 1)
+      assert.equal(pb.offset, 1)
+      assert.ok(pb.total >= 2)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('assets upload/rename/delete round-trip, all guarded by workspace assert', async () => {
+    const { dir, host } = await withHost()
+    try {
+      // 上传（base64 JSON 与 multipart 同通路）
+      const png = Buffer.from('89504e470d0a1a0a' + '00'.repeat(64), 'hex').toString('base64')
+      const up = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/upload',
+        JSON.stringify({ filename: '我的素材.png', mime: 'image/png', data: png }),
+      )
+      assert.equal(up.status, 200, up.text)
+      const upBody = up.json as { ok: boolean; path: string }
+      assert.ok(upBody.ok)
+      assert.match(upBody.path, /^\.dsh\/image-studio\/uploads\//)
+      // 上传后进入 uploaded 筛选
+      const ups = await host.web.fetch('GET', '/imagestudio/api/assets?type=uploaded')
+      assert.equal((ups.json as { total: number }).total, 1)
+      // 重命名
+      const ren = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/rename',
+        JSON.stringify({ path: upBody.path, name: '改名后.png' }),
+      )
+      assert.equal(ren.status, 200, ren.text)
+      const renBody = ren.json as { ok: boolean; path: string }
+      assert.match(renBody.path, /改名后\.png$/)
+      // 越界路径一律 403
+      const esc = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/rename',
+        JSON.stringify({ path: '../outside.png', name: 'x.png' }),
+      )
+      assert.equal(esc.status, 403)
+      const escDel = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/delete',
+        JSON.stringify({ paths: ['../outside.png'] }),
+      )
+      assert.equal(escDel.status, 403)
+      // 删除
+      const del = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/delete',
+        JSON.stringify({ paths: [renBody.path, renBody.path] }),
+      )
+      const delBody = del.json as { deleted: number; missing: string[] }
+      assert.equal(delBody.deleted, 1)
+      assert.equal(delBody.missing.length, 1)
+      const after = await host.web.fetch('GET', '/imagestudio/api/assets?type=uploaded')
+      assert.equal((after.json as { total: number }).total, 0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('assets upload over 10MB is 413', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const data = Buffer.alloc(10 * 1024 * 1024 + 8, 7).toString('base64')
+      const res = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/assets/upload',
+        JSON.stringify({ filename: 'too-big.png', mime: 'image/png', data }),
+      )
+      assert.equal(res.status, 413)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('assets zip download: attachment header + PK payload + path guard', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const gen = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ prompt: 'zip probe', n: 1 }))
+      const path = (gen.json as { images: Array<{ path: string }> }).images[0].path
+      const res = await host.web.fetch('GET', '/imagestudio/api/assets/zip?paths=' + encodeURIComponent(path))
+      assert.equal(res.status, 200)
+      assert.match(res.type, /application\/zip/)
+      assert.match(res.headers['content-disposition'] ?? '', /attachment/)
+      assert.match(res.headers['content-disposition'] ?? '', /imagestudio-assets\.zip/)
+      assert.ok(res.text.startsWith('PK'), 'zip payload must start with PK')
+      const bad = await host.web.fetch('GET', '/imagestudio/api/assets/zip?paths=' + encodeURIComponent('../etc/passwd'))
+      assert.equal(bad.status, 403)
+      const empty = await host.web.fetch('GET', '/imagestudio/api/assets/zip')
+      assert.equal(empty.status, 400)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('gif two-step: /api/gif returns frameList, /api/gif/recode re-encodes subset with delay/loop', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const gen = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/gif',
+        JSON.stringify({ prompt: 'gif frames probe', n: 3, aspectRatio: '1:1', durationSec: 1 }),
+      )
+      assert.equal(gen.status, 200, gen.text)
+      const body = gen.json as { frames: number; frameList: Array<{ path: string }> }
+      assert.ok(body.frames >= 2)
+      assert.ok(Array.isArray(body.frameList) && body.frameList.length === body.frames)
+      const recode = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/gif/recode',
+        JSON.stringify({ frames: body.frameList.slice(0, 2).map((f) => f.path), delayMs: 100, loop: 2 }),
+      )
+      assert.equal(recode.status, 200, recode.text)
+      const out = recode.json as { path: string; mime: string; frames: number; delayMs: number; loop: number }
+      assert.equal(out.mime, 'image/gif')
+      assert.equal(out.frames, 2)
+      assert.equal(out.delayMs, 100)
+      assert.equal(out.loop, 2)
+      const file = await host.web.fetch('GET', '/imagestudio/api/file?path=' + encodeURIComponent(out.path))
+      assert.match(file.type, /image\/gif/)
+      const esc = await host.web.fetch('POST', '/imagestudio/api/gif/recode', JSON.stringify({ frames: ['../etc/passwd'] }))
+      assert.equal(esc.status, 403)
+      const none = await host.web.fetch('POST', '/imagestudio/api/gif/recode', JSON.stringify({ frames: [] }))
+      assert.equal(none.status, 400)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('describe accepts providerId for the reverse tab channel picker', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const up = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/upload',
+        JSON.stringify({ filename: 'rev.png', mime: 'image/png', data: Buffer.from('89504e47' + '00'.repeat(32), 'hex').toString('base64') }),
+      )
+      const path = (up.json as { path: string }).path
+      const res = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/describe',
+        JSON.stringify({ assets: [path], providerId: 'mock', instruction: '简洁描述' }),
+      )
+      assert.equal(res.status, 200, res.text)
+      assert.ok((res.json as { text: string }).text)
+      const bad = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/describe',
+        JSON.stringify({ assets: [path], providerId: 'no-such-channel' }),
+      )
+      assert.equal(bad.status, 400)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
