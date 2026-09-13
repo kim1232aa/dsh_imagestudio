@@ -3,6 +3,20 @@ version: 1.0.0
 title: Photography simulation
 source: SKILL.md
 
+triggers:
+  - 摄影模拟
+  - 徕卡气质街拍组图
+  - 哈苏风格摄影
+  - '理光 GR 日常'
+  - 摄影拼图
+  - 旅行纪实摄影组图
+  - 相机气质出图
+  - 同一地点多图拼一张
+antiTriggers:
+  - 单张人像写真
+  - 宽幅电影故事
+  - 电影海报
+
 modes:
   still:
     shots: 1

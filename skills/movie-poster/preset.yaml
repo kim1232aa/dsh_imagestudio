@@ -4,6 +4,20 @@ title: Movie poster (superseded)
 source: SKILL.md
 supersededBy: cinema-dna-21x9x3
 
+triggers:
+  - 电影海报
+  - 设计一张海报
+  - '9:16 竖版海报'
+  - 片名海报
+  - 书法标题海报
+  - 不同题材的海报
+  - 海报底图
+antiTriggers:
+  - 电影静帧
+  - 电影感分镜
+  - 社媒封面
+  - 小红书图
+
 modes:
   poster:
     trigger: explicit
