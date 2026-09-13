@@ -106,12 +106,13 @@ describe('DOC03 video protocol', () => {
     }
   })
 
-  it('workbench html has 视频 mode and no plugin-pack loader', async () => {
+  it('workbench html has 视频 tab and no plugin-pack loader', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-vid-ui-'))
     const host = await bootStudio({ workspaceRoot: dir, skillsDir, enableXai: false })
     try {
       const page = await host.web.fetch('GET', '/imagestudio')
-      assert.match(page.text, /data-mode="video"/)
+      assert.match(page.text, /data-page="video"/)
+      assert.match(page.text, /视频工作台/)
       assert.doesNotMatch(page.text, /插件包|clone 插件/)
     } finally {
       await rm(dir, { recursive: true, force: true })

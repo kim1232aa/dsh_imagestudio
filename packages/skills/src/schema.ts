@@ -4,6 +4,10 @@ export interface SkillPreset {
   title?: string
   source: string
   supersededBy?: string
+  /** 聊天自动匹配触发短语（中文，5-12 个），供 dsh skill 注册与路由描述使用。 */
+  triggers: string[]
+  /** 反触发边界：命中这些短语时应改派给兄弟 skill 或先澄清。 */
+  antiTriggers?: string[]
   modes: Record<string, SkillMode>
   constraints: {
     referenceImages: { usage: 'analysis-only' | 'image-to-image'; maxDimensions?: number }
@@ -42,7 +46,19 @@ export interface SkillMode {
   refUsage?: 'analysis-only' | 'image-to-image'
 }
 
-const REQUIRED = ['id', 'version', 'source', 'modes', 'planFields'] as const
+const REQUIRED = ['id', 'version', 'source', 'modes', 'planFields', 'triggers'] as const
+
+function validatePhraseList(value: unknown, field: string, dirName: string): string[] {
+  if (!Array.isArray(value) || !value.length) {
+    throw new Error(`preset.yaml (${dirName}) missing required field: ${field}`)
+  }
+  for (const item of value) {
+    if (typeof item !== 'string' || !item.trim()) {
+      throw new Error(`preset.yaml (${dirName}) ${field} entries must be non-empty strings`)
+    }
+  }
+  return value as string[]
+}
 
 export function validatePreset(raw: unknown, dirName: string): SkillPreset {
   if (!raw || typeof raw !== 'object') throw new Error('preset.yaml is empty')
@@ -66,6 +82,13 @@ export function validatePreset(raw: unknown, dirName: string): SkillPreset {
   if (!Array.isArray(p.planFields) || p.planFields.length === 0) {
     throw new Error('preset.yaml missing required field: planFields')
   }
+  const triggers = validatePhraseList(p.triggers, 'triggers', dirName)
+  if (triggers.length < 5 || triggers.length > 12) {
+    throw new Error(
+      `preset.yaml (${dirName}) triggers must contain 5-12 Chinese phrases, got ${triggers.length}`,
+    )
+  }
+  if (p.antiTriggers != null) validatePhraseList(p.antiTriggers, 'antiTriggers', dirName)
   const scoring = p.scoring as SkillPreset['scoring'] | undefined
   if (typeof scoring?.threshold !== 'number') {
     throw new Error('preset.yaml missing required field: scoring.threshold')
@@ -79,6 +102,8 @@ export function validatePreset(raw: unknown, dirName: string): SkillPreset {
     'title',
     'source',
     'supersededBy',
+    'triggers',
+    'antiTriggers',
     'modes',
     'constraints',
     'planFields',
