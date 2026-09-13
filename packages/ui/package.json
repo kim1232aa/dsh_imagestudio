@@ -3,7 +3,31 @@
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "peerDependencies": { "@deepseek-ai/cordis": ">=4.0.1 <5" },
-  "license": "MIT"
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "../client/lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1 <5"
+  },
+  "license": "MIT",
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "external": [
+        "react",
+        "react/jsx-runtime"
+      ],
+      "immediately": true
+    }
+  }
 }

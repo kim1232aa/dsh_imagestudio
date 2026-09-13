@@ -10,5 +10,6 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["packages/**/*.ts", "tests/**/*.ts"]
+  "include": ["packages/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "packages/client"]
 }

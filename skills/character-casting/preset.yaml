@@ -3,6 +3,20 @@ version: 1.0.0
 title: Character casting
 source: SKILL.md
 
+triggers:
+  - 设计一个角色
+  - 原创人物设定
+  - 电影选角图
+  - 角色三视图
+  - 白底角色图
+  - '模特 casting 卡'
+  - 人物设定图
+antiTriggers:
+  - 把真人照片变好看
+  - 动漫角色
+  - 游戏角色
+  - 电影海报
+
 modes:
   sheet:
     shots: 1
