@@ -38,7 +38,7 @@ describe('AC-SK remaining', () => {
 
   it('AC-SK-02 id mismatch fails that skill', async () => {
     assert.throws(
-      () => validatePreset(parseYaml('id: nope\nversion: 1.0.0\nsource: SKILL.md\nmodes: {a: {shots: 1, aspectRatio: "1:1"}}\nconstraints:\n  referenceImages: {usage: analysis-only}\n  negativePatch: none\nplanFields: [x]\nscoring:\n  threshold: 82\n  rubric: [{item: a, max: 100}]\n'), 'other-dir'),
+      () => validatePreset(parseYaml('id: nope\nversion: 1.0.0\nsource: SKILL.md\ntriggers: [一, 二, 三, 四, 五]\nmodes: {a: {shots: 1, aspectRatio: "1:1"}}\nconstraints:\n  referenceImages: {usage: analysis-only}\n  negativePatch: none\nplanFields: [x]\nscoring:\n  threshold: 82\n  rubric: [{item: a, max: 100}]\n'), 'other-dir'),
       /does not match directory/,
     )
   })
@@ -95,7 +95,7 @@ describe('AC-SK remaining', () => {
       () =>
         validatePreset(
           parseYaml(
-            'id: x\nversion: 1.0.0\nsource: SKILL.md\nmodes: {a: {shots: 1, aspectRatio: "1:1"}}\nconstraints:\n  referenceImages: {usage: analysis-only}\n  negativePatch: none\nplanFields: [x]\nscoring:\n  threshold: 82\n  rubric: [{item: a, max: 100}]\nmystery: true\n',
+            'id: x\nversion: 1.0.0\nsource: SKILL.md\ntriggers: [一, 二, 三, 四, 五]\nmodes: {a: {shots: 1, aspectRatio: "1:1"}}\nconstraints:\n  referenceImages: {usage: analysis-only}\n  negativePatch: none\nplanFields: [x]\nscoring:\n  threshold: 82\n  rubric: [{item: a, max: 100}]\nmystery: true\n',
           ),
           'x',
         ),
