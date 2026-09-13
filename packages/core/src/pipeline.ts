@@ -48,6 +48,22 @@ export function installBuiltinHooks(p: Pipeline): void {
   })
 }
 
+/**
+ * SPEC §0.4 评分/veto 闸门：plan 未通过（veto 或 score < threshold）时默认
+ * 阻止出图；`force === true` 显式放行；无 plan 的裸生成不受此门限制。
+ * 必须在 guard 之后、provider 之前调用。
+ */
+export function assertPlanPassed(req: ImageRequest, threshold = 82): void {
+  const plan = req.plan
+  if (!plan || plan.selfCheck?.passed !== false || req.force === true) return
+  const { score, failures, veto } = plan.selfCheck
+  throw new ToolArgsError(
+    'PLAN_REJECTED',
+    `PLAN_REJECTED: score ${score}/${threshold}; failures: ${failures.join('; ')}${veto ? `; veto: ${veto}` : ''}`,
+    { score, threshold, failures, veto: veto ?? null },
+  )
+}
+
 export async function runGenerate(
   p: Pipeline,
   req: ImageRequest,
@@ -56,7 +72,7 @@ export async function runGenerate(
   const guard = p.bus.bail<ImageRequest, GuardVerdict>('image/guard', req)
   if (guard?.blocked) return { blocked: true, reason: guard.reason }
 
-  // 00 §六 / 02 §一：分数只展示，不拦出图。guard 仅保留宿主级硬拦截。
+  assertPlanPassed(req)
   const prepared = await p.bus.waterfall('image/before-request', req)
   return dispatchGenerate(p.registry, prepared, opts, () => {
     p.generateCalls++
@@ -72,6 +88,10 @@ export async function runGenerateOnContext(
   const guard = ctx.bail('image/guard', req) as GuardVerdict | undefined
   if (guard?.blocked) return { blocked: true, reason: guard.reason }
 
+  // plan 闸门：阈值取该 plan 所属 skill 的 preset scoring.threshold，兜底 82。
+  const threshold =
+    (req.plan ? ctx.imageSkills?.get(req.plan.skillId)?.preset?.scoring?.threshold : undefined) ?? 82
+  assertPlanPassed(req, threshold)
   const prepared = (await ctx.waterfall('image/before-request', req, async () => req)) as ImageRequest
   return dispatchGenerate(ctx.imagegen, prepared, opts, undefined, (a, b) =>
     ctx.parallel('image/after-result', a, b),

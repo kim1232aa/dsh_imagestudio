@@ -1,8 +1,16 @@
 (() => {
+  // 互斥：dsh client bundle（packages/client）生效时会在 documentElement 上
+  // 设 data-istudio-client-active='1'，本 snippet 直接退出，不再插侧栏按钮。
+  if (document.documentElement.dataset.istudioClientActive) return;
+
   const BTN_ATTR = "data-imagestudio-entry";
   const OVERLAY_ID = "imagestudio-overlay";
   const LABEL = "技能台";
   const HREF = "/imagestudio";
+
+  function clientBundleActive() {
+    return Boolean(document.documentElement.dataset.istudioClientActive);
+  }
 
   function imagegenTabs() {
     return document.querySelector("[data-dsh-imagegen-session-tabs]");
@@ -109,6 +117,15 @@
   }
 
   function ensureButton() {
+    // client bundle 后加载完成时（slot 注册晚于本脚本），自我拆除。
+    if (clientBundleActive()) {
+      obs.disconnect();
+      clearInterval(timer);
+      const stale = document.querySelector("[" + BTN_ATTR + "]");
+      if (stale) stale.remove();
+      closeOverlay();
+      return;
+    }
     if (document.querySelector("[" + BTN_ATTR + "]")) return;
     const studio = makeControl();
     const tabs = imagegenTabs();
@@ -125,7 +142,7 @@
 
   const obs = new MutationObserver(() => ensureButton());
   obs.observe(document.documentElement, { childList: true, subtree: true });
+  const timer = setInterval(ensureButton, 1500);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
   else ensureButton();
-  setInterval(ensureButton, 1500);
 })();

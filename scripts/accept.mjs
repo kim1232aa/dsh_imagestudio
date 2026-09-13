@@ -61,12 +61,21 @@ try {
     brief: '游戏CG应拒',
   }))
   check('AC-UI-08', veto.json?.passed === false && veto.json?.planId, `score=${veto.json?.score}`)
-  const still = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({
+  const blocked = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({
     planId: veto.json?.planId,
     prompt: '游戏CG应拒',
     n: 1,
   }))
-  check('AC-UI-08-gen', still.status === 200 && (still.json?.images || []).length >= 1, 'low score still generates')
+  check('AC-UI-08-gate', blocked.status === 422 && blocked.json?.error?.code === 'PLAN_REJECTED'
+    && typeof blocked.json?.error?.score === 'number' && Array.isArray(blocked.json?.error?.failures),
+    `status=${blocked.status} code=${blocked.json?.error?.code}`)
+  const still = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({
+    planId: veto.json?.planId,
+    prompt: '游戏CG应拒',
+    n: 1,
+    force: true,
+  }))
+  check('AC-UI-08-gen', still.status === 200 && (still.json?.images || []).length >= 1, 'force:true still generates')
 
   const a = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ prompt: 'a', n: 1 }))
   const b = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ prompt: 'b', n: 1 }))
