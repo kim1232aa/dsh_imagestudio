@@ -15,8 +15,11 @@ export async function loadSkills(root: string, enabled?: string[]): Promise<Load
   const entries = await readdir(root).catch(() => [])
   const loaded: LoadedSkill[] = []
   const errors: string[] = []
+  // An empty whitelist means "no filter" (cordis Config normalizes a missing
+  // `enabled` to [], which must not disable every skill).
+  const whitelist = enabled?.length ? enabled : undefined
   for (const name of entries) {
-    if (enabled && !enabled.includes(name)) continue
+    if (whitelist && !whitelist.includes(name)) continue
     const dir = join(root, name)
     const isDir = await stat(dir).then((s) => s.isDirectory()).catch(() => false)
     if (!isDir) continue
@@ -32,7 +35,7 @@ export async function loadSkills(root: string, enabled?: string[]): Promise<Load
     }
   }
   if (!loaded.length) {
-    return loadBundled(enabled)
+    return loadBundled(enabled?.length ? enabled : undefined)
   }
   if (errors.length) {
     const err = new Error(`Some skills failed to load:\n- ${errors.join('\n- ')}`)
