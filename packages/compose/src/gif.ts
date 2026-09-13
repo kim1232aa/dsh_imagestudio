@@ -3,8 +3,9 @@ import type { RgbaImage } from './png.ts'
 /**
  * Minimal GIF89a encoder (256-color 3-3-2 palette, looping).
  * Used when ffmpeg is not on PATH so `/imagestudio/api/gif` still works offline.
+ * loop：Netscape 循环次数，0 = 无限循环（默认，保持旧行为）。
  */
-export function encodeGif(frames: RgbaImage[], delayCs = 25): Uint8Array {
+export function encodeGif(frames: RgbaImage[], delayCs = 25, loop = 0): Uint8Array {
   if (frames.length < 1) throw new Error('gif needs at least 1 frame')
   const width = frames[0].width
   const height = frames[0].height
@@ -18,10 +19,12 @@ export function encodeGif(frames: RgbaImage[], delayCs = 25): Uint8Array {
   ls[6] = 0
   parts.push(ls)
   parts.push(palette332())
-  // Netscape 2.0 loop
+  // Netscape 2.0 loop（0 = 无限循环）
   parts.push(Buffer.from([0x21, 0xff, 0x0b]))
   parts.push(Buffer.from('NETSCAPE2.0', 'ascii'))
-  parts.push(Buffer.from([0x03, 0x01, 0x00, 0x00, 0x00]))
+  const loopExt = Buffer.from([0x03, 0x01, 0x00, 0x00, 0x00])
+  loopExt.writeUInt16LE(Math.max(0, Math.min(65535, Math.round(loop))), 2)
+  parts.push(loopExt)
   for (const frame of frames) {
     const gce = Buffer.alloc(8)
     gce[0] = 0x21
