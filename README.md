@@ -7,7 +7,7 @@ DeepSeek Harness（dsh / Cordis）插件：**先做导演判断，再出图，�
 
 独立入口在官方 DSH 壳里：侧栏「技能台」（`/imagestudio`）。若本机已装 `@dickpy/dsh-imagegen`，它继续占「生图 / AI 生图」和 `generate_image`；本插件不抢那颗按钮、不注册那四个工具名。工作台是自写的 Nova 式文生图/图生图/策划/反推/三联，加上 5 个 FANTASY skill。画廊 / 画布 / 电商 / 视频是工作台页签（mock 通路），不是 VisioWork 或 Nova 源码，也不是独立 PWA。
 
-**交接：[`docs/HANDOVER.md`](docs/HANDOVER.md)**（怎么跑官方 dsh、验收缺口、已知坑）。运行手册：[`docs/HANDOFF.md`](docs/HANDOFF.md)。
+**架构文档（单一事实源）：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**（结构、数据流、工具清单、PLAN_REJECTED 语义、怎么跑）。docs/ 下的旧多代文档为历史口径（工具名、分数语义等已过时），一律以 ARCHITECTURE 与 SPEC 为准。
 
 ## 接到官方 DeepSeek Harness
 
@@ -64,15 +64,31 @@ Skill：`cinema-dna-21x9x3` `life-force-portrait` `photography-simulation` `movi
 
 「插件配置」页不会自动出表单——那是官方 settings card 槽，不是入口。
 
+### 浏览器 client bundle（M4，官方 client 插件形态）
+
+`packages/client/` 是 dsh 双面插件的浏览器半（参考 dsh-imagegen 模式），`npm run build:client` 产出 `packages/client/lib/client.js`（closure-factory：`window.__ModuleLoader__.load({ id: 'dsh-imagestudio', factory })`，react 等宿主平台模块经注入 require 解析）。根包 `exports["./client"]` 指向该产物，`dsh.client` 声明 `platform: 'web'` + `inject`（宿主包边）+ `external: ['react', 'react/jsx-runtime']` + `immediately: true`。
+
+生效后提供三个界面：
+
+1. **侧栏入口 + 主面板**：`sidebar.panellist` 注册 `id: 'imagestudio'`、label「生图」；`main` keyed 槽注册同 key 面板，内容为全尺寸 `<iframe src="/imagestudio">`（服务端工作台全部能力保留）。
+2. **toolview**：`tool.call.toolview` keyed 槽接管 `istudio_generate` / `istudio_edit` / `istudio_compose` —— 解析结果 JSON 的 `images[]`（compose 兼容单 `path`）渲染图片网格（`/imagestudio/api/file?path=…`）+ 模型/渠道/任务摘要 + 错误态；`PLAN_REJECTED` 解析 score/threshold/failures/veto 友好展示；running/cancelled 态覆盖；「在画布中打开」dispatch `istudio:open-canvas` CustomEvent。
+3. **互斥**：挂载成功后 `document.documentElement` 设 `data-istudio-client-active='1'`；旧兜底 `packages/ui/src/entry.js` 检测到该标记即退出（后生效也会自我拆除）。反之 bundle 不可用时 entry.js 照旧插「技能台」按钮。localStorage `istudio:client-disabled=1` 可强制走兜底。
+
+验证状态（详见 `verifier/runs/`）：构建验证 ✅；bundle 以包名 `@dsh-imagestudio/dsh-image-ui` 进入官方启动图并加载无错 ✅（dsh 0.1.5-rc.1 本机实测，2026-09-14）；侧栏入口与出图闭环由 entry.js 注入路径实测通过 ✅；client bundle 的 slot 面板/toolview 注册在真实壳内静默降级未生效（已知限制，见下）。
+
+已知限制：① `sidebar.panellist`/`main`/`tool.call.toolview` 三个 slot 的注册按宿主源码契约实现，但在 0.1.5-rc.1 壳内未激活（entry.js 注入路径为默认且可靠的入口，两者互斥不冲突）；② `npm run typecheck` 存在仓库基线既存错误（非本次引入）。
+
 ## 一句话架构
 
 ```
 tools  →  skills + assets + compose
               ↓
-         image-core (契约 / 事件 / 注册表)
+         image-core (契约 / 事件 / 注册表 / plan 闸门)
               ↓
-     openai | gemini | nova-bridge | mock
+        openai 兼容 | mock
 ```
+
+gemini / nova 两个空壳 provider 已删除（避免误导），后续需要时按 `ImageProvider` 接口重新实现。
 
 每个包导出 `name` / `inject` / `apply`（`Config` 为 Schemastery Schema）。
 
@@ -93,7 +109,7 @@ node --test --experimental-strip-types tests/*.test.ts
 
 | id | 上游 | 状态 |
 |---|---|---|
-| cinema-dna-21x9x3 | FANTASY cinema-dna | 建议 21:9 三联、本地 8–12px 黑缝；分数只展示，不拦出图 |
+| cinema-dna-21x9x3 | FANTASY cinema-dna | 建议 21:9 三联、本地 8–12px 黑缝；plan 低分/veto 默认拦出图（PLAN_REJECTED），`force:true` 放行 |
 | life-force-portrait | FANTASY life-force | MODE A 保留身份，质感层 ≤ 2 |
 | photography-simulation | FANTASY photo sim | 相机/胶片作约束 |
 | movie-poster | FANTASY poster | `supersededBy: cinema-dna-21x9x3` |
@@ -122,8 +138,8 @@ skill 安装：把 preset 目录放进仓库 `skills/` 下并在插件配置 `en
 |---|---|---|
 | openai-image | `https://api.openai.com/v1` 或任意 OpenAI 兼容中转 | `/images/generations` 出图；填了 editModel 才可图生图/局部重绘 |
 | mock | 不需要地址 | 离线概念板，未配渠道也能出图 |
-| gemini-generate | `https://generativelanguage.googleapis.com` | Gemini 图像 |
-| nova-bridge | 本机 Nova 桥地址 | 复用 Nova 会话 |
+
+> gemini / nova-bridge 渠道暂未实现（空壳 provider 已删除），后续按 `ImageProvider` 接口补齐。
 
 视频渠道：与图片同一渠道表单，多填一个「视频模型」（如 `grok-imagine-video`）。视频走异步两步协议（提交 → 轮询 → 下载），无需另外装插件。反推/AI 看图：填「视觉模型」（如 `grok-4.5`）。
 
