@@ -3,6 +3,20 @@ version: 1.0.0
 title: Fantasy life-force portrait
 source: SKILL.md
 
+triggers:
+  - 游客照变高级
+  - 这张废片救一下
+  - 生命感人像
+  - 氛围感大片
+  - 朋友圈照片升级
+  - 人像摄影提示词
+  - 人像样片
+  - 清透不油的人像
+antiTriggers:
+  - 街头纪实组图
+  - 电影海报
+  - 角色设计
+
 modes:
   mode-a:
     shots: 1
