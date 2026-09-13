@@ -696,7 +696,18 @@ export function apply(ctx: Context): void {
                 const excluded = /embedding|embed|rerank|whisper|tts|moderation|audio/.test(low)
                 return media && !excluded
               })
-              send(res, 200, { total: ids.length, models: usable })
+              // 一些中转站把同一模型在多个命名空间前缀下重复挂载
+              // （如 grok-imagine-edit / grok/grok-imagine-edit / x-ai/grok-imagine-edit /
+              // xai/grok-imagine-edit 四份），按去掉厂商前缀后的裸名去重，
+              // 优先保留不带前缀的那条，避免检测结果里塞满看似不同实则同一个模型的重复项。
+              const seen = new Map<string, string>()
+              for (const mid of usable) {
+                const bare = mid.replace(/^(grok|x-ai|xai)\//i, '')
+                const existing = seen.get(bare)
+                if (!existing || (existing.includes('/') && !mid.includes('/'))) seen.set(bare, mid)
+              }
+              const deduped = [...seen.values()]
+              send(res, 200, { total: ids.length, models: deduped })
             } catch (err) {
               const e = err as Error & { cause?: Error }
               send(res, 502, { error: `连不上渠道地址 ${baseUrl}：${[e.message, e.cause?.message].filter(Boolean).join(' ← ')}` })

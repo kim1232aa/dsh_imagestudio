@@ -282,6 +282,77 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
+  it('POST /channels/detect dedupes the same model repeated under grok/x-ai/xai namespace prefixes', async () => {
+    const { dir, host } = await withHost()
+    const original = globalThis.fetch
+    try {
+      process.env.TEST_DETECT_KEY = 'test-key'
+      globalThis.fetch = (async (input: unknown) => {
+        const url = String(input)
+        if (url.endsWith('/models')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                { id: 'grok-imagine-edit' },
+                { id: 'grok/grok-imagine-edit' },
+                { id: 'x-ai/grok-imagine-edit' },
+                { id: 'xai/grok-imagine-edit' },
+                { id: 'grok-imagine-image-2.0' },
+                { id: 'grok-4.5' }, // 纯聊天模型必须被过滤掉，不进 usable
+                { id: 'text-embedding-3-small' },
+              ],
+            }),
+            { status: 200 },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }) as typeof fetch
+      const res = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/channels/detect',
+        JSON.stringify({ baseUrl: 'https://relay.example/v1', apiKeyEnv: 'TEST_DETECT_KEY' }),
+      )
+      assert.equal(res.status, 200, res.text)
+      const body = res.json as { total: number; models: string[] }
+      assert.equal(body.total, 7)
+      // 四份同一模型的重复命名空间必须合并成一条（优先保留裸名）。
+      assert.equal(body.models.filter((m) => m.toLowerCase().includes('grok-imagine-edit')).length, 1)
+      assert.ok(body.models.includes('grok-imagine-edit'))
+      assert.ok(body.models.includes('grok-imagine-image-2.0'))
+      // 聊天/嵌入模型不应混进图片/视频可用列表
+      assert.ok(!body.models.some((m) => m.includes('grok-4.5')))
+      assert.ok(!body.models.some((m) => m.includes('embedding')))
+    } finally {
+      globalThis.fetch = original
+      delete process.env.TEST_DETECT_KEY
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('settings page renders detect results as clickable fill buttons, not a single text sentence', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      // 必须有一个专门渲染检测结果按钮的容器 + renderDetectList 函数
+      // （检测结果的 HTML 是浏览器端 JS 运行时拼接的，这里能核对的是
+      // 服务端吐出的源码字符串本身包含了正确的字段名和拼接逻辑）。
+      assert.match(res.text, /id="chDetectList"/)
+      assert.match(res.text, /function renderDetectList/)
+      // data-fill 属性由 CH_TARGETS 的 field 值拼接而成，四个目标字段
+      // （生图/视频/编辑/视觉）必须全部在源码里声明，且渲染逻辑用了 data-fill。
+      assert.match(res.text, /data-fill="'\+t\.field\+'"/)
+      assert.match(res.text, /field:\s*'chModel'/)
+      assert.match(res.text, /field:\s*'chVideoModel'/)
+      assert.match(res.text, /field:\s*'chEditModel'/)
+      assert.match(res.text, /field:\s*'chVisionModel'/)
+      // 点击按钮必须真的把模型名写进对应 input 的 value，不是只展示文字。
+      assert.match(res.text, /input\.value\s*=\s*model/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('ecom page exposes a provider/model selector wired into /ecom/confirm', async () => {
     const { dir, host } = await withHost()
     try {

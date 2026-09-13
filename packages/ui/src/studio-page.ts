@@ -350,6 +350,7 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
       <button class="ghost" id="chDetect">检测可用模型</button>
     </div>
     <p class="note" id="chDetectOut">检测不会列出纯聊天 / Embedding 模型。未配密钥时会明确说是鉴权问题。</p>
+    <div id="chDetectList" class="row" style="flex-wrap:wrap;gap:6px;margin:4px 0 8px"></div>
     <ol id="chList" class="note"></ol>
     <label>栏宽（刷新后记住）</label>
     <input id="colWidth" type="range" min="180" max="420" value="260"/>
@@ -1090,9 +1091,37 @@ $('enhance') && ($('enhance').onclick = () => {
       setStatus('保存失败：' + (e && e.message ? e.message : e));
     }
   });
+  // 检测结果不再只是一句纯文字：每个模型渲染成 4 个小按钮（生图/视频/编辑/视觉），
+  // 点哪个就把这个模型名真填进对应输入框，不用再从一整句话里抄字符。
+  const CH_TARGETS = [
+    { field: 'chModel', label: '生图' },
+    { field: 'chVideoModel', label: '视频' },
+    { field: 'chEditModel', label: '编辑' },
+    { field: 'chVisionModel', label: '视觉' },
+  ];
+  function renderDetectList(models){
+    const box = $('chDetectList');
+    if (!box) return;
+    box.innerHTML = models.map(m => {
+      const buttons = CH_TARGETS.map(t =>
+        '<button class="ghost" data-fill="'+t.field+'" data-model="'+escapeHtml(m)+'" style="padding:2px 6px;font-size:11px">'+t.label+'</button>'
+      ).join('');
+      return '<span style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:6px;padding:2px 4px">'
+        + '<code style="font-size:12px">'+escapeHtml(m)+'</code>' + buttons + '</span>';
+    }).join('');
+    box.querySelectorAll('[data-fill]').forEach(btn => {
+      btn.onclick = () => {
+        const field = btn.dataset.fill;
+        const model = btn.dataset.model;
+        const input = $(field);
+        if (input) { input.value = model; setStatus('已填入'+CH_TARGETS.find(t=>t.field===field).label+'模型：'+model); }
+      };
+    });
+  }
   $('chDetect') && ($('chDetect').onclick = async () => {
-    // 真探测：后端带上游密钥请求 /models，按名字滤掉聊天/向量模型。
+    // 真探测：后端带上游密钥请求 /models，按名字滤掉聊天/向量模型（并去重多命名空间重复项）。
     setStatus('正在检测上游模型…');
+    renderDetectList([]);
     try {
       const r = await api('/channels/detect', {
         baseUrl: ($('chUrl').value||'').trim(),
@@ -1101,9 +1130,10 @@ $('enhance') && ($('enhance').onclick = () => {
       if (r && r.error) { $('chDetectOut').textContent = r.error; setStatus('检测失败'); return; }
       const models = (r && r.models) || [];
       $('chDetectOut').textContent = models.length
-        ? ('上游共 ' + (r.total||models.length) + ' 个模型，其中图片/视频可用 ' + models.length + ' 个：' + models.slice(0,20).join('，') + (models.length>20?' …':''))
+        ? ('上游共 ' + (r.total||models.length) + ' 个模型，其中图片/视频可用 ' + models.length + ' 个（点下方按钮直接填入对应输入框，不用手抄）：')
         : '检测不到图片/视频模型。可检查地址后重试，或手动填模型名。';
-      setStatus(models.length ? '已检测 '+models.length+' 个可用模型' : '未检测到可用模型');
+      renderDetectList(models);
+      setStatus(models.length ? '已检测 '+models.length+' 个可用模型 · 点按钮直接填入' : '未检测到可用模型');
     } catch (e) {
       $('chDetectOut').textContent = '检测失败：' + (e && e.message ? e.message : e);
       setStatus('检测失败');
