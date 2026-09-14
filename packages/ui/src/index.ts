@@ -420,6 +420,64 @@ export function apply(ctx: Context): void {
             send(res, 200, { jobs: jobStore.list() })
             return
           }
+          // 侧栏队列药丸：聚合 jobStore 状态（并发/排队/上限），供页面 3s 轮询
+          if (url.pathname === '/imagestudio/api/queue' && (!req.method || req.method === 'GET')) {
+            const jobs = jobStore.list()
+            const processing = jobs.filter(j => j.status === 'running').length
+            const queued = jobs.filter(j => j.status === 'queued' || j.status === 'pending').length
+            send(res, 200, { processing, queued, maxQueue: 200, accepting: true })
+            return
+          }
+          // 随机图「设为参考图」：白名单前缀的远程图代理落盘（防 SSRF，仅两个固定图源）
+          if (req.method === 'POST' && url.pathname === '/imagestudio/api/fetch-remote') {
+            const REMOTE_WHITELIST = ['https://img.catcdn.cn/ba/', 'https://bing.img.run/']
+            try {
+              const rawRemote = await readBody(req)
+              const remoteBody = rawRemote ? JSON.parse(rawRemote) : {}
+              const remoteUrl = String(remoteBody.url || '')
+              if (!REMOTE_WHITELIST.some(p => remoteUrl.startsWith(p))) {
+                send(res, 403, { error: '图源不在白名单内' })
+                return
+              }
+              const ac = new AbortController()
+              const timer = setTimeout(() => ac.abort(), 15000)
+              let upstream: Response
+              try {
+                upstream = await fetch(remoteUrl, { signal: ac.signal, redirect: 'follow' })
+              } finally {
+                clearTimeout(timer)
+              }
+              if (!upstream.ok) {
+                send(res, 502, { error: '上游返回 ' + upstream.status })
+                return
+              }
+              const mime = String(upstream.headers.get('content-type') || '').split(';')[0].trim()
+              if (!mime.startsWith('image/')) {
+                send(res, 502, { error: '上游返回的不是图片（' + (mime || '未知类型') + '）' })
+                return
+              }
+              const bytes = Buffer.from(await upstream.arrayBuffer())
+              if (!bytes.length) {
+                send(res, 502, { error: '上游返回空内容' })
+                return
+              }
+              if (bytes.length > MAX_UPLOAD) {
+                send(res, 502, { error: '图片超过 10MB 上限' })
+                return
+              }
+              const ext = mime === 'image/jpeg' ? '.jpg' : mime === 'image/webp' ? '.webp' : mime === 'image/gif' ? '.gif' : '.png'
+              const dim = pngSize(bytes)
+              const ref = await ctx.imageAssets.writeImage('studio', randomUUID(), 'random-' + Date.now() + ext, bytes, {
+                width: dim.width,
+                height: dim.height,
+                mime
+              })
+              send(res, 200, { path: ref.path, width: ref.width, height: ref.height, mime: ref.mime })
+            } catch (err) {
+              send(res, 502, { error: '拉取远程图失败：' + (err instanceof Error ? err.message : String(err)) })
+            }
+            return
+          }
           // 网页复刻静态预览：/imagestudio/web/<id>/index.html 等，仅白名单文件
           if (url.pathname === '/imagestudio/api/webclone/project' && (!req.method || req.method === 'GET')) {
             const id = url.searchParams.get('id') ?? ''

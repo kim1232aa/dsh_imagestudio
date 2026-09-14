@@ -265,16 +265,20 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
-  it('DOC02 pages: top tabs 生图/视频/动图/反推/无限画布/UI设计/我的素材/电商/模板库/设置', async () => {
+  it('DOC02 pages: Nova 侧栏九页 + 设置弹窗 + 电商能力并入生图工作台', async () => {
     const { dir, host } = await withHost()
     try {
       const res = await host.web.fetch('GET', '/imagestudio')
       assert.equal(res.status, 200)
-      for (const label of ['生图', '视频', '动图', '反推', '无限画布', 'UI 设计', '我的素材', '电商', '模板库', '设置']) {
+      for (const label of ['生图工作台', '视频工作台', '无限画布', 'UI设计模式', '我的素材', '反推提示词', '动图生成', '提示词广场', '设置', '电商套图']) {
         assert.match(res.text, new RegExp(label))
       }
-      for (const page of ['gen', 'video', 'gif', 'reverse', 'canvas', 'uidesign', 'assets', 'ecom', 'tpl', 'settings']) {
+      // Nova 九页：电商不再是独立页签，作为卡片并入生图工作台（能力经 ecom 控件组保留）
+      for (const page of ['gen', 'video', 'canvas', 'uidesign', 'assets', 'reverse', 'gif', 'tpl', 'settings']) {
         assert.match(res.text, new RegExp(`data-page="${page}"`))
+      }
+      for (const id of ['ecomPreview', 'ecomConfirm', 'ecomUses', 'ecomProvider']) {
+        assert.match(res.text, new RegExp(`id="${id}"`))
       }
       assert.doesNotMatch(res.text, /data-page="gallery"/)
     } finally {
