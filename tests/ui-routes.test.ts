@@ -329,6 +329,62 @@ describe('AC-UI routes on host webServer', () => {
     }
   })
 
+  it('settings page has no dead protocol picker — backend only ever registers openai-image', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      // 之前 UI 上有一个"协议"下拉，选项包含 gemini-generate/nova-bridge，
+      // 但后端 POST /channels 从来只 new OpenAIImageProvider(...) 并硬编码
+      // protocol: 'openai-image' —— 选那两项完全没有任何效果，是个假控件，
+      // 已经删除。这里锁死它不会再回来。
+      assert.doesNotMatch(res.text, /id="chProto"/)
+      assert.doesNotMatch(res.text, /gemini-generate/)
+      assert.doesNotMatch(res.text, /nova-bridge/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('POST /channels registers a real provider and /channels/delete actually unregisters it (not just the on-disk file)', async () => {
+    const { dir, host } = await withHost()
+    try {
+      process.env.TEST_CHANNEL_KEY = 'test-key'
+      const saveRes = await host.web.fetch(
+        'POST',
+        '/imagestudio/api/channels',
+        JSON.stringify({ id: 'acceptance-ch', model: 'grok-imagine-image-2.0', baseUrl: 'https://relay.example/v1', apiKeyEnv: 'TEST_CHANNEL_KEY' }),
+      )
+      assert.equal(saveRes.status, 200, saveRes.text)
+      const metaAfterSave = await host.web.fetch('GET', '/imagestudio/api/meta')
+      const providersAfterSave = (metaAfterSave.json as { providers: Array<{ id: string }> }).providers
+      assert.ok(providersAfterSave.some((p) => p.id === 'acceptance-ch'), 'provider should be registered in the live registry, not just localStorage')
+
+      const delRes = await host.web.fetch('POST', '/imagestudio/api/channels/delete', JSON.stringify({ id: 'acceptance-ch' }))
+      assert.equal(delRes.status, 200, delRes.text)
+      const metaAfterDelete = await host.web.fetch('GET', '/imagestudio/api/meta')
+      const providersAfterDelete = (metaAfterDelete.json as { providers: Array<{ id: string }> }).providers
+      assert.ok(!providersAfterDelete.some((p) => p.id === 'acceptance-ch'), 'provider must be unregistered from ctx.imagegen, not merely removed from channels.json')
+    } finally {
+      delete process.env.TEST_CHANNEL_KEY
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('settings page has edit/delete affordances per saved channel and a key-status badge, not a bare <li> sentence', async () => {
+    const { dir, host } = await withHost()
+    try {
+      const res = await host.web.fetch('GET', '/imagestudio')
+      assert.equal(res.status, 200)
+      assert.match(res.text, /data-chact="edit"/)
+      assert.match(res.text, /data-chact="del"/)
+      assert.match(res.text, /class="chkey"/)
+      assert.match(res.text, /"chlist"/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('settings page renders detect results as clickable fill buttons, not a single text sentence', async () => {
     const { dir, host } = await withHost()
     try {

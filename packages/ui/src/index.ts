@@ -251,6 +251,15 @@ interface SavedChannel {
 }
 
 export function apply(ctx: Context): void {
+  // 渠道注册的 dispose 句柄：register() 返回的 unregister 函数必须存起来，
+  // 否则"删除渠道"没法真的把 provider 从 registry 里摘掉，只能改落盘文件
+  // 骗自己（provider 还在内存里继续接单）。
+  const channelDisposers = new Map<string, () => void>()
+  const registerChannel = (row: SavedChannel) => {
+    channelDisposers.get(row.id)?.()
+    const provider = new OpenAIImageProvider(row)
+    channelDisposers.set(row.id, ctx.imagegen.register(row.id, provider))
+  }
   const jobStore = new JobStore(ctx.imageAssets.root)
   jobStore.failRunningOnBoot()
 
@@ -272,7 +281,7 @@ export function apply(ctx: Context): void {
       for (const c of saved) {
         try {
           if (ctx.imagegen.list().some((p) => p.id === c.id)) continue
-          ctx.imagegen.register(c.id, new OpenAIImageProvider(c))
+          registerChannel(c)
         } catch (err) {
           console.warn('[imagestudio] restore channel failed:', c.id, err)
         }
@@ -652,10 +661,23 @@ export function apply(ctx: Context): void {
               send(res, 400, { error: `鉴权问题：环境变量 ${apiKeyEnv} 未设置或为空，请先配置密钥再保存渠道` })
               return
             }
-            const provider = new OpenAIImageProvider({ id, model, baseUrl, apiKeyEnv, ...(videoModel ? { videoModel } : {}), ...(editModel ? { editModel } : {}), ...(visionModel ? { visionModel } : {}) })
-            ctx.imagegen.register(id, provider)
+            const row: SavedChannel = { id, protocol: 'openai-image', model, ...(videoModel ? { videoModel } : {}), ...(editModel ? { editModel } : {}), ...(visionModel ? { visionModel } : {}), baseUrl, apiKeyEnv }
+            registerChannel(row)
             const saved = await readSavedChannels()
-            const next = saved.filter((c) => c.id !== id).concat([{ id, protocol: 'openai-image', model, ...(videoModel ? { videoModel } : {}), ...(editModel ? { editModel } : {}), ...(visionModel ? { visionModel } : {}), baseUrl, apiKeyEnv }])
+            const next = saved.filter((c) => c.id !== id).concat([row])
+            await writeFile(channelsFile(), JSON.stringify(next, null, 2))
+            send(res, 200, { ok: true, providers: ctx.imagegen.list() })
+            return
+          }
+          // 删除渠道：既要摘掉内存里的 provider 注册（否则重启前还能被继续调用），
+          // 也要从落盘的 channels.json 里删掉（否则下次启动又被恢复回来）。
+          if (url.pathname === '/imagestudio/api/channels/delete' && req.method === 'POST') {
+            const id = String(body.id || '').trim()
+            if (!id) { send(res, 400, { error: '缺少渠道 id' }); return }
+            channelDisposers.get(id)?.()
+            channelDisposers.delete(id)
+            const saved = await readSavedChannels()
+            const next = saved.filter((c) => c.id !== id)
             await writeFile(channelsFile(), JSON.stringify(next, null, 2))
             send(res, 200, { ok: true, providers: ctx.imagegen.list() })
             return

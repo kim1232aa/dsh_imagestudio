@@ -82,6 +82,23 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 .cfgstepper button{border:0;border-radius:0;background:#14130f;width:26px;height:26px;padding:0;font-size:14px;line-height:1}
 .cfgstepper span{min-width:24px;text-align:center;font-size:12px;padding:0 4px}
 .cfgbox button.primary{height:32px;font-size:12px;padding:0 10px}
+/* 设置页表单：字段标签独立一行 + 满宽输入框，跟画布 cfgrow/cfglabel 用同一套
+   视觉语言，但输入框走主表单常规尺寸（不是画布节点里的紧凑小字号）。 */
+[data-page="settings"] .cfgrow{gap:4px;margin:10px 0 0}
+[data-page="settings"] .cfgfull{width:100%}
+.cfggrid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media (max-width:640px){.cfggrid2{grid-template-columns:1fr}}
+.chcard{background:#181712;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+.chlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.chrow{background:#181712;border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chrow b{font-size:13px}
+.chrow .chmeta{color:var(--muted);font-size:12px;flex:1;min-width:0}
+.chrow .chmeta code{background:transparent;color:var(--muted)}
+.chkey{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.chkey[data-ok="1"]{border-color:#4a8c5a;color:#7fc98f}
+.chkey[data-ok="0"]{border-color:var(--warn);color:var(--warn)}
+.chrow .acts{padding:0;gap:4px}
+.chrow .acts button{font-size:12px;padding:3px 10px}
 .empty{padding:24px;color:var(--muted)}
 .empty{padding:24px;color:var(--muted)}
 .score{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px}
@@ -331,38 +348,30 @@ header .right{margin-left:auto;display:flex;gap:8px;align-items:center}
 </section>
 
 <section class="page" data-page="settings">
-  <div class="empty" style="max-width:720px">
+  <div class="empty" style="max-width:760px">
     <h3>渠道设置</h3>
-    <p class="note">密钥只写环境变量名，不写进浏览器、日志或 plan.json。值放 <code>$DSH_HOME/.credentials.yaml</code>。检测模型由宿主插件配置生效，这里先记下你要用的渠道。</p>
+    <p class="note">密钥只写环境变量名，不写进浏览器、日志或 plan.json。值放 <code>$DSH_HOME/.credentials.yaml</code>。协议固定走 OpenAI 兼容 <code>/images/generations</code>（xAI/Grok/大多数中转站都是这套），mock 是内置离线渠道，不用配置也能出概念板。</p>
     <p class="banner" id="settingsHint">还没有渠道时，工作台会走内置 mock，仍可直接出图。</p>
-    <label>渠道 id</label>
-    <input id="chId" placeholder="openai / grok / seedream"/>
-    <label>协议</label>
-    <select id="chProto">
-      <option value="openai-image">OpenAI /images/generations</option>
-      <option value="gemini-generate">Gemini / Nano Banana</option>
-      <option value="nova-bridge">Nova 桥</option>
-      <option value="mock">mock（离线概念板）</option>
-    </select>
-    <label>模型</label>
-    <input id="chModel" placeholder="gpt-image-2"/>
-    <label>视频模型（可选，填了该渠道才能出视频）</label>
-    <input id="chVideoModel" placeholder="grok-imagine-video"/>
-    <label>图生图/编辑模型（可选，填了参考图才真正参与生成）</label>
-    <input id="chEditModel" placeholder="grok-imagine-edit"/>
-    <label>视觉/反推模型（可选，填了反推与 AI 看图才走真实渠道）</label>
-    <input id="chVisionModel" placeholder="grok-4.5"/>
-    <label>地址</label>
-    <input id="chUrl" placeholder="https://api.openai.com/v1"/>
-    <label>密钥环境变量名</label>
-    <input id="chEnv" placeholder="IMAGE_STUDIO_KEY"/>
-    <div class="row" style="margin-top:12px">
+    <div class="chcard" id="chExisting" style="display:none">
+      <div class="cfgrow"><span class="cfglabel">正在编辑</span><b id="chEditingId"></b> <button class="ghost" id="chEditCancel" style="margin-left:auto">取消编辑 · 新建渠道</button></div>
+    </div>
+    <div class="cfgrow"><span class="cfglabel">渠道 id</span><input id="chId" class="cfgfull" placeholder="openai / grok / seedream"/></div>
+    <div class="cfggrid2">
+      <div class="cfgrow"><span class="cfglabel">生图模型（必填）</span><input id="chModel" class="cfgfull" placeholder="gpt-image-2"/></div>
+      <div class="cfgrow"><span class="cfglabel">地址（必填）</span><input id="chUrl" class="cfgfull" placeholder="https://api.openai.com/v1"/></div>
+      <div class="cfgrow"><span class="cfglabel">视频模型（可选）</span><input id="chVideoModel" class="cfgfull" placeholder="grok-imagine-video"/></div>
+      <div class="cfgrow"><span class="cfglabel">编辑/图生图模型（可选）</span><input id="chEditModel" class="cfgfull" placeholder="grok-imagine-edit"/></div>
+      <div class="cfgrow"><span class="cfglabel">视觉/反推模型（可选）</span><input id="chVisionModel" class="cfgfull" placeholder="grok-4.5"/></div>
+      <div class="cfgrow"><span class="cfglabel">密钥环境变量名（必填）</span><input id="chEnv" class="cfgfull" placeholder="IMAGE_STUDIO_KEY"/></div>
+    </div>
+    <div class="row" style="margin-top:12px;gap:8px">
       <button class="primary" id="chSave">保存渠道（本机）</button>
       <button class="ghost" id="chDetect">检测可用模型</button>
     </div>
     <p class="note" id="chDetectOut">检测不会列出纯聊天 / Embedding 模型。未配密钥时会明确说是鉴权问题。</p>
     <div id="chDetectList" class="row" style="flex-wrap:wrap;gap:6px;margin:4px 0 8px"></div>
-    <ol id="chList" class="note"></ol>
+    <label style="margin-top:16px">已保存的渠道</label>
+    <div id="chList" class="chlist"></div>
     <label>栏宽（刷新后记住）</label>
     <input id="colWidth" type="range" min="180" max="420" value="260"/>
     <h3 style="margin-top:18px">存储与数据</h3>
@@ -1059,29 +1068,87 @@ $('enhance') && ($('enhance').onclick = () => {
 });
 (function bindSettings(){
   function renderCh(){
-    const ol = $('chList');
-    if (!ol) return;
+    const box = $('chList');
+    if (!box) return;
     const rows = state.channels || [];
-    ol.innerHTML = rows.length
-      ? rows.map((c, i) => '<li>'+escapeHtml(c.id)+' · '+escapeHtml(c.protocol)+' · '+escapeHtml(c.model||'')+(c.videoModel?' · 视频 '+escapeHtml(c.videoModel):'')+(c.editModel?' · 编辑 '+escapeHtml(c.editModel):'')+(c.visionModel?' · 视觉 '+escapeHtml(c.visionModel):'')+' · env '+escapeHtml(c.apiKeyEnv||'')+' · <span data-keyslot="'+i+'">密钥状态查询中…</span></li>').join('')
-      : '<li>还没有保存的渠道。mock 仍可出图。</li>';
+    if (!rows.length) {
+      box.innerHTML = '<p class="note">还没有保存的渠道。mock 仍可出图。</p>';
+    } else {
+      box.innerHTML = rows.map((c, i) => {
+        const caps = [
+          c.videoModel ? '视频 '+escapeHtml(c.videoModel) : '',
+          c.editModel ? '编辑 '+escapeHtml(c.editModel) : '',
+          c.visionModel ? '视觉 '+escapeHtml(c.visionModel) : '',
+        ].filter(Boolean).join(' · ');
+        return '<div class="chrow" data-idx="'+i+'">'
+          + '<b>'+escapeHtml(c.id)+'</b>'
+          + '<span class="chmeta">生图 <code>'+escapeHtml(c.model||'')+'</code>'+(caps?' · '+caps:'')+' · <code>'+escapeHtml(c.baseUrl||'')+'</code></span>'
+          + '<span class="chkey" data-keyslot="'+i+'">密钥状态查询中…</span>'
+          + '<div class="row acts">'
+          + '<button class="ghost" data-chact="edit" data-idx="'+i+'">编辑</button>'
+          + '<button class="ghost" data-chact="del" data-idx="'+i+'">删除</button>'
+          + '</div></div>';
+      }).join('');
+    }
     rows.forEach((c, i) => {
-      const slot = ol.querySelector('[data-keyslot="'+i+'"]');
+      const slot = box.querySelector('[data-keyslot="'+i+'"]');
       if (!slot) return;
       api('/key-status', { apiKeyEnv: c.apiKeyEnv || 'IMAGE_STUDIO_KEY' }).then(r => {
-        slot.textContent = r.configured ? '密钥已配置' : '密钥未配置';
-        slot.style.color = r.configured ? '' : '#c0392b';
+        slot.textContent = r.configured ? '✓ 密钥已配置' : '✗ 密钥未配置';
+        slot.dataset.ok = r.configured ? '1' : '0';
       }).catch(() => { slot.textContent = '密钥状态未知'; });
+    });
+    box.querySelectorAll('[data-chact="edit"]').forEach(btn => {
+      btn.onclick = () => {
+        const c = rows[Number(btn.dataset.idx)];
+        if (!c) return;
+        $('chId').value = c.id;
+        $('chModel').value = c.model || '';
+        $('chVideoModel').value = c.videoModel || '';
+        $('chEditModel').value = c.editModel || '';
+        $('chVisionModel').value = c.visionModel || '';
+        $('chUrl').value = c.baseUrl || '';
+        $('chEnv').value = c.apiKeyEnv || '';
+        $('chExisting').style.display = 'block';
+        $('chEditingId').textContent = c.id;
+        window.scrollTo(0, 0);
+        setStatus('正在编辑渠道「'+c.id+'」，改完点「保存渠道」覆盖');
+      };
+    });
+    box.querySelectorAll('[data-chact="del"]').forEach(btn => {
+      btn.onclick = async () => {
+        const c = rows[Number(btn.dataset.idx)];
+        if (!c) return;
+        if (!window.confirm('删除渠道「'+c.id+'」？已用它生成过的图片不受影响。')) return;
+        try {
+          const r = await api('/channels/delete', { id: c.id });
+          if (r && r.error) { setStatus('删除失败：'+r.error); return; }
+          state.channels = (state.channels||[]).filter(x => x.id !== c.id);
+          saveLS('channels', state.channels);
+          state.providers = (r && r.providers) || state.providers;
+          renderCh();
+          window.__cvRefreshProviders && window.__cvRefreshProviders();
+          window.__ecomRefreshProviders && window.__ecomRefreshProviders();
+          setStatus('已删除渠道「'+c.id+'」');
+        } catch (e) {
+          setStatus('删除失败：' + (e && e.message ? e.message : e));
+        }
+      };
     });
     const hint = $('settingsHint');
     if (hint) hint.textContent = rows.length ? ('已保存 '+rows.length+' 个渠道（仅本机 localStorage，不含密钥值）。') : '还没有渠道时，工作台会走内置 mock，仍可直接出图。';
   }
+  $('chEditCancel') && ($('chEditCancel').onclick = () => {
+    ['chId','chModel','chVideoModel','chEditModel','chVisionModel','chUrl','chEnv'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+    $('chExisting').style.display = 'none';
+    setStatus('已切回新建渠道');
+  });
   $('chSave') && ($('chSave').onclick = async () => {
     const id = ($('chId').value||'').trim();
     if (!id) { setStatus('先填渠道 id'); return; }
     const row = {
       id,
-      protocol: $('chProto').value,
+      protocol: 'openai-image',
       model: ($('chModel').value||'').trim(),
       videoModel: ($('chVideoModel') && $('chVideoModel').value || '').trim(),
       editModel: ($('chEditModel') && $('chEditModel').value || '').trim(),
@@ -1090,13 +1157,19 @@ $('enhance') && ($('enhance').onclick = () => {
       apiKeyEnv: ($('chEnv').value||'IMAGE_STUDIO_KEY').trim()
     };
     // 真注册：保存调用后端 /channels，注册成真实 provider 并落盘，
-    // 不再只是 localStorage 里的摆设。
+    // 不再只是 localStorage 里的摆设。协议固定 openai-image——之前页面上
+    // 还留着 Gemini/Nova 选项，但后端从来只认这一种协议，选了也没用，
+    // 是个假控件，已经删掉，不能再误导用户去配一个实际不会生效的地址。
     try {
       const r = await api('/channels', row);
       if (r && r.error) { setStatus('保存失败：' + r.error); return; }
       state.channels = (state.channels||[]).filter(c => c.id !== id).concat([row]);
       saveLS('channels', state.channels);
+      state.providers = r.providers || state.providers;
+      $('chExisting').style.display = 'none';
       renderCh();
+      window.__cvRefreshProviders && window.__cvRefreshProviders();
+      window.__ecomRefreshProviders && window.__ecomRefreshProviders();
       setStatus('渠道已保存并注册（重启后仍生效）· 密钥值不进页面');
     } catch (e) {
       setStatus('保存失败：' + (e && e.message ? e.message : e));
