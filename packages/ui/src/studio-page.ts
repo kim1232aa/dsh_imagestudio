@@ -68,9 +68,20 @@ pre{white-space:pre-wrap;background:#0e0d0b;border-radius:10px;padding:10px;bord
 .hist button{text-align:left;background:#14130f;border:1px solid var(--line);border-radius:8px;padding:8px;color:inherit;cursor:pointer}
 .canvas{position:relative;flex:1;background:#0d0c0a;overflow:hidden}
 .node{position:absolute;background:#1b1a16;border:1px solid var(--line);border-radius:10px;padding:10px;min-width:220px;width:auto;max-width:360px;cursor:grab}
-.node .cfgbox textarea{min-height:40px;resize:vertical}
-.node .cfgbox select,.node .cfgbox input,.node .cfgbox textarea{background:#14130f;border:1px solid var(--line);border-radius:6px;color:inherit;padding:3px 6px;font-size:12px}
 .node .note{white-space:nowrap;margin:4px 0 0}
+/* 配置节点的生成参数区：跟主生图页同一套字段标签+满宽控件语言，
+   而不是塞进一行的裸 label+select，保证画布和其它页面视觉一致。 */
+.cfgbox{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.cfgbox .cfgfield{width:100%;min-height:44px;max-height:96px;resize:vertical;background:#0e0d0a;border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:inherit;font:inherit;font-size:12px}
+.cfgrow{display:flex;flex-direction:column;gap:3px}
+.cfggrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cfglabel{font-size:11px;color:var(--muted);letter-spacing:.02em}
+.cfgselect{width:100%;background:#0e0d0a;border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+.cfgselect:hover{border-color:var(--accent)}
+.cfgstepper{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:fit-content}
+.cfgstepper button{border:0;border-radius:0;background:#14130f;width:26px;height:26px;padding:0;font-size:14px;line-height:1}
+.cfgstepper span{min-width:24px;text-align:center;font-size:12px;padding:0 4px}
+.cfgbox button.primary{height:32px;font-size:12px;padding:0 10px}
 .empty{padding:24px;color:var(--muted)}
 .empty{padding:24px;color:var(--muted)}
 .score{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px}
@@ -1439,40 +1450,57 @@ $('enhance') && ($('enhance').onclick = () => {
     applyView();
     setStatus('已回正到全部内容（' + Math.round(scale*100) + '%）');
   }
-  // 生成配置的参数控件直接嵌进节点卡片本体（不再靠选中后弹出的隐藏横条），
-  // 模型下拉显示 "渠道id (真实model名)"，与 Nova Studio 原版对齐。
+  // 生成配置的参数控件直接嵌进节点卡片本体（不再靠选中后弹出的隐藏横条）。
+  // 视觉上复用生图主页同一套 .cfgfield/.cfgselect/.cfgstepper 语言（见样式表），
+  // 字段名独立一行 + 下方满宽控件，而不是挤在一行里的裸 label+select。
   const RATIOS = ['自动','1:1','3:4','4:3','9:16','16:9','2:3','3:2','21:9'];
   const CLARITIES = ['自动','1K','2K'];
   function renderCfgControls(cfg, el){
     const providers = (state.providers||[]);
     const box = document.createElement('div');
     box.className = 'cfgbox';
-    box.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:4px';
     const providerOpts = '<option value="">默认渠道</option>' + providers.map(p =>
       '<option value="'+escapeHtml(p.id)+'"'+(cfg.providerId===p.id?' selected':'')+'>'
-      + escapeHtml(p.id) + (p.model ? ' ('+escapeHtml(p.model)+')' : '')
+      + '✨ ' + escapeHtml(p.id) + (p.model ? ' · '+escapeHtml(p.model) : '')
       + '</option>').join('');
+    const n = cfg.n || 1;
     box.innerHTML =
-      '<textarea data-cf="prompt" placeholder="提示词补充，可空，连线文本优先" style="min-height:40px">'+escapeHtml(cfg.text||'')+'</textarea>'
-      + '<label style="display:flex;align-items:center;gap:4px">模型 <select data-cf="providerId" style="flex:1;min-width:0">'+providerOpts+'</select></label>'
-      + '<div class="row" style="gap:4px">'
-      + '<label style="display:flex;align-items:center;gap:4px;flex:1">比例 <select data-cf="ratio" style="flex:1">' + RATIOS.map(r=>'<option'+(( (cfg.ratio||'自动')===r)?' selected':'')+'>'+r+'</option>').join('') + '</select></label>'
-      + '<label style="display:flex;align-items:center;gap:4px;flex:1">清晰度 <select data-cf="clarity" style="flex:1">' + CLARITIES.map(c=>'<option'+(((cfg.clarity||'自动')===c)?' selected':'')+'>'+c+'</option>').join('') + '</select></label>'
-      + '<label style="display:flex;align-items:center;gap:4px">张数 <input data-cf="n" type="number" min="1" max="4" value="'+(cfg.n||1)+'" style="width:48px"/></label>'
+      '<textarea data-cf="prompt" class="cfgfield" placeholder="提示词补充，可空，连线文本优先">'+escapeHtml(cfg.text||'')+'</textarea>'
+      + '<div class="cfgrow"><span class="cfglabel">模型</span><select data-cf="providerId" class="cfgselect">'+providerOpts+'</select></div>'
+      + '<div class="cfggrid">'
+      + '<div><span class="cfglabel">比例</span><select data-cf="ratio" class="cfgselect">' + RATIOS.map(r=>'<option'+(( (cfg.ratio||'自动')===r)?' selected':'')+'>'+r+'</option>').join('') + '</select></div>'
+      + '<div><span class="cfglabel">清晰度</span><select data-cf="clarity" class="cfgselect">' + CLARITIES.map(c=>'<option'+(((cfg.clarity||'自动')===c)?' selected':'')+'>'+c+'</option>').join('') + '</select></div>'
       + '</div>'
-      + '<button class="primary" data-cf="send">发送出图</button>';
+      + '<div class="cfgrow"><span class="cfglabel">张数</span><div class="cfgstepper">'
+      + '<button type="button" class="ghost" data-cf="ndown">−</button>'
+      + '<span data-cf="nval">'+n+'</span>'
+      + '<button type="button" class="ghost" data-cf="nup">+</button>'
+      + '</div></div>'
+      + '<button class="primary" data-cf="send" style="width:100%">✨ 发送出图</button>';
+    const clampN = (v) => Math.max(1, Math.min(4, v));
     const commit = () => {
       record();
       cfg.text = (box.querySelector('[data-cf="prompt"]').value||'').trim() || undefined;
       cfg.ratio = box.querySelector('[data-cf="ratio"]').value === '自动' ? undefined : box.querySelector('[data-cf="ratio"]').value;
       cfg.clarity = box.querySelector('[data-cf="clarity"]').value === '自动' ? undefined : box.querySelector('[data-cf="clarity"]').value;
-      cfg.n = Math.max(1, Math.min(4, Number(box.querySelector('[data-cf="n"]').value)||1));
       cfg.providerId = box.querySelector('[data-cf="providerId"]').value || undefined;
       persist();
     };
-    box.querySelectorAll('select[data-cf], input[data-cf]').forEach(f => f.addEventListener('change', commit));
+    box.querySelectorAll('select[data-cf]').forEach(f => f.addEventListener('change', commit));
     box.querySelector('[data-cf="prompt"]').addEventListener('change', commit);
     box.querySelectorAll('[data-cf]').forEach(f => f.addEventListener('pointerdown', ev => ev.stopPropagation()));
+    box.querySelector('[data-cf="ndown"]').addEventListener('click', ev => {
+      ev.stopPropagation(); record();
+      cfg.n = clampN((cfg.n||1) - 1);
+      box.querySelector('[data-cf="nval"]').textContent = cfg.n;
+      persist();
+    });
+    box.querySelector('[data-cf="nup"]').addEventListener('click', ev => {
+      ev.stopPropagation(); record();
+      cfg.n = clampN((cfg.n||1) + 1);
+      box.querySelector('[data-cf="nval"]').textContent = cfg.n;
+      persist();
+    });
     box.querySelector('[data-cf="send"]').addEventListener('click', ev => { ev.stopPropagation(); commit(); sendFromConfig(cfg); });
     el.append(box);
   }
@@ -1656,7 +1684,7 @@ $('enhance') && ($('enhance').onclick = () => {
         const src = n.path ? '/imagestudio/api/file?path='+encodeURIComponent(n.path) : '';
         el.innerHTML = '<b>视频</b>'+(src?'<video src="'+src+'" muted style="width:160px;display:block;margin-top:6px"></video>':'<div class="note">视频节点</div>');
       } else {
-        el.innerHTML = '<b>生成配置</b><div class="note">入边 '+ins+'</div>';
+        el.innerHTML = '<b>生成配置</b><div class="note">'+(ins ? '已连 '+ins+' 路输入' : '还没连线 · 拖出下方端口接文本/图片')+'</div>';
         renderCfgControls(n, el);
       }
       const outp = document.createElement('i');

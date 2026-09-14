@@ -373,11 +373,17 @@ describe('AC-UI routes on host webServer', () => {
       // 旧的隐藏横条机制必须已经移除：不应再出现 id="cvGen" 容器。
       assert.doesNotMatch(res.text, /id="cvGen"/)
       // renderCfgControls 把参数控件挂进节点卡片本体，data-cf 标记每个字段。
+      // 张数是 +/- 步进器（ndown/nup/nval）而不是裸数字输入框，视觉上跟
+      // 主生图页的胶囊控件语言（cfgbox/cfgselect/cfgstepper）保持一致。
       assert.match(res.text, /data-cf="providerId"/)
       assert.match(res.text, /data-cf="ratio"/)
       assert.match(res.text, /data-cf="clarity"/)
-      assert.match(res.text, /data-cf="n"/)
+      assert.match(res.text, /data-cf="ndown"/)
+      assert.match(res.text, /data-cf="nup"/)
+      assert.match(res.text, /data-cf="nval"/)
       assert.match(res.text, /data-cf="send"/)
+      assert.match(res.text, /box\.className\s*=\s*'cfgbox'/)
+      assert.match(res.text, /"cfgstepper"/)
       // 模型下拉必须把渠道的真实 model 名拼进选项文案，不能只显示渠道 id。
       assert.match(res.text, /p\.model/)
     } finally {
