@@ -154,6 +154,27 @@ const JSON_OUTPUT = {
   ],
 }
 
+/**
+ * 生图工具专用输出：文本块顶部带 markdown 图片链接，dsh 会话直接渲染出图，
+ * 不再只是一段 JSON。JSON 全文附在代码围栏里，模型侧照样拿到结构化数据。
+ */
+const IMAGE_MD_OUTPUT = {
+  schema: JSON_OUTPUT.schema,
+  render: (_args: unknown, value: unknown) => {
+    const v = value as { images?: Array<{ path?: string; width?: number; height?: number }>; model?: string; providerId?: string }
+    const images = v && Array.isArray(v.images) ? v.images.filter((im) => im && im.path) : []
+    if (!images.length) return JSON_OUTPUT.render(_args, value)
+    const head = [
+      `已生成 ${images.length} 张图片${v.model ? `（${v.model}${v.providerId ? ' · ' + v.providerId : ''}）` : ''}：`,
+      ...images.map(
+        (im, i) =>
+          `![生成图片 ${i + 1}](/imagestudio/api/file?path=${encodeURIComponent(im.path as string)})`,
+      ),
+    ]
+    return [{ type: 'text' as const, text: head.join('\n') + '\n\n```json\n' + JSON.stringify(value, null, 2) + '\n```' }]
+  },
+}
+
 /** 读参考图的真实宽高 / sha256 / mime（PNG 与 baseline JPEG），不再填 0 占位。 */
 async function loadAssetRef(ctx: Context, rel: string): Promise<AssetRef> {
   const bytes = await loadBytes(ctx, rel)
@@ -185,7 +206,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
       parameters: doc('istudio_skill_plan').parameters,
       timeoutMs,
       async execute(args) {
-        const plan = ctx.imageSkills.compile(args.skillId, args.brief, { wantPoster: args.wantPoster })
+        const plan = await ctx.imageSkills.compile(args.skillId, args.brief, { wantPoster: args.wantPoster })
         const score = await ctx.serial('image/score', plan)
         if (score) plan.selfCheck = score as CreativePlan['selfCheck']
         ctx.imageSkills.plans.set(plan.id, plan)
@@ -205,7 +226,7 @@ export function apply(ctx: Context, config: { limits?: { maxImagesPerCall?: numb
   registerStudioTool(
     t,
     defineImageTool({
-      output: JSON_OUTPUT,
+      output: IMAGE_MD_OUTPUT,
       name: 'istudio_generate',
       description: doc('istudio_generate').description,
       parameters: doc('istudio_generate').parameters,

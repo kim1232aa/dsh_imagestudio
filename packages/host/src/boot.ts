@@ -12,7 +12,7 @@ import * as openai from '../../provider-openai/src/index.ts'
 import * as tools from '../../tools/src/index.ts'
 import * as ui from '../../ui/src/index.ts'
 import { MiniTools } from './minitools.ts'
-import { createJobsStub, createLlmStub } from './stubs.ts'
+import { createJobsStub, createLlmStub, type LlmStubImpl } from './stubs.ts'
 import { MemoryWebServer } from './memory-web.ts'
 
 /** FiberState is a const enum — compare these numbers, never import the enum. */
@@ -24,6 +24,8 @@ export interface BootOptions {
   skillsDir: string
   enabledSkills?: string[]
   enableXai?: boolean
+  /** 测试注入的 llm 行为：固定文本或函数；缺省 = 空文本（= 未配置模型，走规则兜底）。 */
+  llm?: LlmStubImpl
 }
 
 export interface StudioHost {
@@ -38,7 +40,7 @@ export async function bootStudio(opts: BootOptions): Promise<StudioHost> {
   await mkdir(opts.workspaceRoot, { recursive: true })
   const ctx = new Context()
   const mini = new MiniTools()
-  const llm = createLlmStub()
+  const llm = createLlmStub(opts.llm)
   const jobs = createJobsStub()
   const web = new MemoryWebServer()
 

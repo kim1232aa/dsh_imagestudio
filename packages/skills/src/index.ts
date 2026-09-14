@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { loadSkills, type LoadedSkill } from './load.ts'
-import { compilePlan } from './compile.ts'
+import { compilePlanWithLlm, reviewPlanWithLlm, enhancePromptWithLlm } from './llm.ts'
 import { ToolArgsError } from '../../core/src/errors.ts'
 import type { CreativePlan } from '../../core/src/types.ts'
 
@@ -91,16 +91,30 @@ export async function apply(
   ctx.provide('imageSkills', {
     list: () => loaded,
     get: (id: string) => loaded.find((s) => s.preset.id === id),
-    compile(
+    async compile(
       skillId: string,
       brief: string,
       opts?: { wantPoster?: boolean; mode?: string; characters?: CreativePlan['characters'] },
     ) {
       const skill = loaded.find((s) => s.preset.id === skillId)
       if (!skill) throw new ToolArgsError('INVALID_ARGS', `unknown skillId ${skillId}`)
-      return compilePlan(skill, brief, opts)
+      // inject = ['llm'] 是真接线：有模型就模型起草（仍过 staticCheck），没有就规则兜底
+      return compilePlanWithLlm(ctx, skill, brief, opts)
     },
+    enhance: (prompt: string) => enhancePromptWithLlm(ctx, prompt),
     plans,
+  })
+
+  // image/score 钩子的真实监听者：让 dsh 模型按 rubric 评审方案。
+  // 只写 selfCheck.llmReview（顾问），return undefined 不 bail —— 闸门判定仍由
+  // staticCheck 决定，宿主若注册了更强的评分器仍可接管（serial 先到先得）。
+  ctx.on('image/score', async (plan: CreativePlan) => {
+    try {
+      await reviewPlanWithLlm(ctx, plan)
+    } catch (err) {
+      console.warn('[image-skills] llm review skipped:', err instanceof Error ? err.message : err)
+    }
+    return undefined
   })
 
   // Optional integration: dsh hosts provide ctx.skills (SkillRegistry); other

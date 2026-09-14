@@ -32,7 +32,7 @@ describe('M1 tool-level gates and compose modes', () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
-      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', '明代夜审账房')
+      const plan = await host.ctx.imageSkills.compile('cinema-dna-21x9x3', '明代夜审账房')
       plan.selfCheck = { score: 40, passed: false, failures: ['below 82'], veto: '测试 veto' }
       host.ctx.imageSkills.plans.set(plan.id, plan)
       const before = mock.calls
@@ -51,7 +51,7 @@ describe('M1 tool-level gates and compose modes', () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
-      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', '明代夜审账房')
+      const plan = await host.ctx.imageSkills.compile('cinema-dna-21x9x3', '明代夜审账房')
       plan.selfCheck = { score: 40, passed: false, failures: ['below 82'] }
       host.ctx.imageSkills.plans.set(plan.id, plan)
       const before = mock.calls

@@ -107,7 +107,7 @@ describe('AC-UI routes on host webServer', () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
-      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', '夜审账房放榜三镜')
+      const plan = await host.ctx.imageSkills.compile('cinema-dna-21x9x3', '夜审账房放榜三镜')
       plan.selfCheck = { score: 40, passed: false, failures: ['below 82'], veto: '测试 veto' }
       host.ctx.imageSkills.plans.set(plan.id, plan)
       const before = mock.calls
@@ -133,7 +133,7 @@ describe('AC-UI routes on host webServer', () => {
     const { dir, host } = await withHost()
     try {
       const mock = host.ctx.imagegen.resolve('mock') as { calls: number }
-      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', '夜审账房放榜三镜')
+      const plan = await host.ctx.imageSkills.compile('cinema-dna-21x9x3', '夜审账房放榜三镜')
       plan.selfCheck = { score: 40, passed: false, failures: ['below 82'] }
       host.ctx.imageSkills.plans.set(plan.id, plan)
       const before = mock.calls
@@ -154,7 +154,7 @@ describe('AC-UI routes on host webServer', () => {
   it('PLAN_REJECTED 422 carries veto and workbench shows 仍然出图', async () => {
     const { dir, host } = await withHost()
     try {
-      const plan = host.ctx.imageSkills.compile('cinema-dna-21x9x3', 'veto probe')
+      const plan = await host.ctx.imageSkills.compile('cinema-dna-21x9x3', 'veto probe')
       plan.selfCheck = { score: 55, passed: false, failures: ['f1'], veto: '三镜同机位' }
       host.ctx.imageSkills.plans.set(plan.id, plan)
       const res = await host.web.fetch('POST', '/imagestudio/api/generate', JSON.stringify({ planId: plan.id }))

@@ -794,8 +794,20 @@ export function apply(ctx: Context): void {
             }
             return
           }
+            if (url.pathname === '/imagestudio/api/enhance') {
+              // 「增强提示词」真调 dsh llm 服务（skills 包 inject=['llm']）；
+              // 无模型/失败时 text 为 ''，前端回退本地模板 —— 两条路都可用。
+              const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+              if (!prompt) {
+                send(res, 400, { error: 'prompt 不能为空' })
+                return
+              }
+              const text = (await ctx.imageSkills.enhance?.(prompt)) ?? ''
+              send(res, 200, { text, llm: !!text })
+              return
+            }
             if (url.pathname === '/imagestudio/api/plan') {
-              const plan = ctx.imageSkills.compile(body.skillId, body.brief, {
+              const plan = await ctx.imageSkills.compile(body.skillId, body.brief, {
                 wantPoster: !!body.wantPoster,
                 mode: typeof body.mode === 'string' ? body.mode : undefined,
               })

@@ -71,6 +71,11 @@ export interface ScoreCard {
   failures: string[]
   veto?: string
   breakdown?: Array<{ item: string; score: number; max: number }>
+  /**
+   * dsh llm 服务给出的顾问评审（image/score 钩子的真实监听者写入）。
+   * 只读参考 —— 绝不影响 score/passed/failures/veto 的确定性判定。
+   */
+  llmReview?: { score: number; issues: string[] }
 }
 
 export interface PresetConstraints {
@@ -102,6 +107,8 @@ export interface CreativePlan {
   selfCheck: ScoreCard
   characters?: CharacterSheet[]
   brief: string
+  /** 方案起草来源：'llm' = dsh 模型看 brief 起草（已过 staticCheck）；'rules' = 规则引擎兜底。 */
+  draftedBy?: 'llm' | 'rules'
 }
 
 export type ClarityTier = '自动' | '1K' | '2K' | '4K' | 'auto'

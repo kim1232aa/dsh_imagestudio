@@ -1135,9 +1135,13 @@ function showPlan(plan){
   const shots = (plan.shots||[]).map(s=>s.id+' '+s.aspectRatio+'\\n'+s.prompt).join('\\n\\n');
   const reason = plan.reasoning ? Object.values(plan.reasoning).join('\\n') : '';
   box.hidden = false;
+  const review = sc.llmReview;
   box.innerHTML = '<b>方案自检 '+((sc.score!=null)?sc.score:'—')+' 分</b>'
+    + '<span class="note">（'+(plan.draftedBy==='llm' ? '模型起草' : '规则兜底')+'）</span>'
     + (sc.passed===false ? '<p>有弱项：直接出图会被默认拦下，到时点「仍然出图」可放行。</p>' : '')
     + (sc.failures&&sc.failures.length ? '<p>'+sc.failures.join('；')+'</p>' : '')
+    + (review ? '<p><b>模型评审 '+review.score+' 分</b>'
+        + (review.issues&&review.issues.length ? '：'+review.issues.map(escapeHtml).join('；') : '：没挑出毛病')+'</p>' : '')
     + '<pre>'+reason+'\\n\\n'+shots+'</pre>';
   $('log').hidden = false;
   const neg = (plan.shots&&plan.shots[0]&&plan.shots[0].negative) || (plan.constraints&&plan.constraints.negativePatch) || '';
@@ -1681,14 +1685,17 @@ $('cancelGo').onclick = async () => {
   } catch (e) { console.warn('[imagestudio] best-effort cancel failed:', e); }
   if (state.jobAbort) state.jobAbort.abort();
 };
-$('enhance').onclick = () => {
-  const hasChat = (state.channels||[]).some(c => /chat|enhance|llm/i.test(String(c.id||'')+String(c.model||'')));
-  if (!hasChat) {
-    setStatus('未配置提示词增强模型。到「设置」填一个聊天模型渠道后再用。');
-    return;
-  }
-  const brief = $('brief').value.trim() || '画只猫';
-  $('brief').value = [
+// 增强提示词：真调 dsh 模型（/enhance → skills 包 inject 的 llm 服务）；
+// 无模型/失败回退本地模板 —— 两条路都可用，状态条说清楚走的是哪条。
+async function enhanceViaLlm(text){
+  try {
+    const r = await api('/enhance', { prompt: text });
+    if (r && r.text) return { text: r.text, llm: true };
+  } catch (e) { console.warn('[imagestudio] enhance fallback to local:', e); }
+  return { text: '', llm: false };
+}
+function localEnhance(brief){
+  return [
     brief,
     'subject and action in one sentence',
     'camera: lens, distance, height',
@@ -1696,7 +1703,21 @@ $('enhance').onclick = () => {
     'materials: cloth, skin, surface',
     'do not add banned aesthetic adjectives'
   ].join('. ');
-  setStatus('已按本地模板展开提示词（未调用上游）');
+}
+$('enhance').onclick = async () => {
+  const brief = $('brief').value.trim();
+  if (!brief) { setStatus('先写点提示词再增强'); return; }
+  $('enhance').disabled = true;
+  setStatus('模型改写中…');
+  const out = await enhanceViaLlm(brief);
+  $('enhance').disabled = false;
+  if (out.llm) {
+    $('brief').value = out.text;
+    setStatus('已用模型改写提示词');
+  } else {
+    $('brief').value = localEnhance(brief);
+    setStatus('未配置模型渠道，已按本地模板展开');
+  }
 };
 $('ibClear').onclick = () => {
   $('brief').value = '';
@@ -1786,12 +1807,15 @@ function optimizeLocal(text){
     + '材质：布料、皮肤、表面质感\\n'
     + '规避：不要过度油腻的 AI 光效与塑料感';
 }
-$('ibOptimize').onclick = () => {
+$('ibOptimize').onclick = async () => {
   const src = $('brief').value.trim();
   if (!src) { setStatus('先写点提示词再优化'); return; }
   $('optSrc').value = src;
-  $('optOut').value = optimizeLocal(src);
+  $('optOut').value = '模型改写中…';
   openDlg('dlgOpt');
+  const out = await enhanceViaLlm(src);
+  $('optOut').value = out.llm ? out.text : optimizeLocal(src);
+  if (!out.llm) setStatus('未配置模型渠道，优化用的是本地模板');
 };
 $('optApply').onclick = () => { $('brief').value = $('optOut').value; closeDlg('dlgOpt'); setStatus('已应用优化后的提示词'); };
 
